@@ -1,5 +1,5 @@
-#ifndef ARRAY_H
-#define ARRAY_H
+#ifndef _ARRAY_H
+#define _ARRAY_H
 #include <mqueue.h>
 #include <stdio.h>
 #include <unistd.h>

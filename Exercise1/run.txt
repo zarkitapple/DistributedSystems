@@ -1,0 +1,7 @@
+gcc -Wall server.c -lrt -l pthread -o server
+
+Array.c --> static library
+
+gcc -Wall -c array.c
+ar -rv array.a array.o
+gcc -Wall client.c -o client array.a -lrt

@@ -218,6 +218,5 @@ int main(int argc, char const *argv[])
         msg_not_copied = TRUE;
         pthread_mutex_unlock(&mutex_msg);
     }
-    
     return 0;
 }
