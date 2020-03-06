@@ -46,7 +46,6 @@ int find_vector(char * name){
 
     for(int ii = 0; ii< storage.size; ii++){
         if(strcmp(storage.vectors[ii].name,name)==0){
-            printf("Storage find: %s vs  %s\n",storage.vectors[ii].name,name);
             return ii;
         }
     }
@@ -63,7 +62,6 @@ int function_selector (struct request * req) {
         /* init("vector",100) name, arg2*/
         printf("Init %s\n",req->name);
         result = find_vector(req->name);
-        printf("resutl index %d\n",result);
         /* Vector does not exist */
         if(result==-1){
             Vector vector;
@@ -88,7 +86,6 @@ int function_selector (struct request * req) {
             storage.vectors[storage.size] = vector;
             storage.size ++;
             pthread_mutex_unlock(&mutex_memmory);
-             printf("After asigning memory stroage size: %d\n",storage.size);
             return 1;
         }
         else if(result!=-1 && (storage.vectors[result].size == req->arg2)){
@@ -100,7 +97,6 @@ int function_selector (struct request * req) {
         /* set("vector",0,40) */
         printf("Set %s\n",req->name);
         result = find_vector(req->name);
-        printf("resutl index %d\n",result);
         if(result == -1 || (storage.vectors[result].size) -1 < req->arg2){
             return -1 ;
         }
@@ -114,19 +110,15 @@ int function_selector (struct request * req) {
         /* get("vector",2,value) */
         printf("Get %s\n",req->name);
         result = find_vector(req->name);
-        printf("resutl index %d\n",result);
         if(result == -1 || (storage.vectors[result].size-1) < req->arg2){
             return -1;
         }
         result = storage.vectors[result].elements[req->arg2];
-        printf("Value result %d\n",result);
         return result; 
     case 3:
         /* destroy("vector") */
         printf("Destroy %s\n",req->name);
         result = find_vector(req->name);
-        printf("resutl index %d\n",result);
-
         if(result == -1 ){
             return -1;
         }
@@ -164,8 +156,7 @@ void process_request(struct request * req){
     else
     {
 
-       print_state();
-
+        //print_state();
         mq_send(q_client,(char *)&result,sizeof(int),0);
         mq_close(q_client);
     }
@@ -219,7 +210,6 @@ int main(int argc, char const *argv[])
     {
 
         mq_receive(q_server,&req,sizeof(struct request),0);
-        puts("after rececibve");
         pthread_create(&thid,&t_attr,(void *) process_request,&req);
         pthread_mutex_lock(&mutex_msg);
         while(msg_not_copied){
@@ -228,14 +218,6 @@ int main(int argc, char const *argv[])
         msg_not_copied = TRUE;
         pthread_mutex_unlock(&mutex_msg);
     }
-    /* Now we delete all the dynamically allocated elements of the storage system and
-        its vectors */
-    /* for (int ii = 0 ; ii< storage.size ; ii++){
-        free(storage.vectors[ii].elements);
-    }
-    free(storage.vectors);
-    mq_close(q_server);
-    mq_unlink(SERVERQ); */
     
     return 0;
 }

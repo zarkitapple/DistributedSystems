@@ -1,0 +1,53 @@
+Domains:
+
+PF_UNIX: communication inside host
+PF_INET: tcp/ip prortocols
+
+Types:
+
+SOCK_STREAM  TCP protol if PF_INET connection oriented
+SOCK_DATAGRAM  UDp if PF_INET connectionless
+SOCK_RAW protocol less
+
+Addresses:
+
+struct sockaddr_in PF_INET
+struct sockaddr_un PF_UNIX
+
+IP Addresses
+
+struct in_addr{
+    in_addr_t s_addr;
+};
+
+Host name:
+
+int getHostname(char * name, int name_length);
+
+Host Addresses:
+
+-obtain ip
+    /* obtain hostent address from a dotted decimal address */
+    struct hostent * gethostbyname(char * str);
+    /* obtain host address from an Ip address */
+    struct hostent * gethostbyaddr(void * addr, int len , int type);
+
+    
+-comversion
+    inet_ntoa: 32 bit -> dotted decimal
+    inet_aton: dotted decimal -> 32 bit
+
+Byte ordering:
+
+Tcp/ip use big-endian
+-converison functions
+    u_long htonl(u_long hostlong) -> host to network
+    u_long ntohl(u_long netlong) -> network to host
+
+Socket creation:
+
+int socket(int domain,int type,int protocol);
+
+Socket address assignment
+
+int bind(int sd, struct sockaddr_in * addr, int addrlen);

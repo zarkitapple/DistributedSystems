@@ -22,9 +22,4 @@ int set(char * name,int i,int value);
 int get(char * name,int i, int * value);
 int destroy (char * name);
 
-
-
-
-
-
 #endif
