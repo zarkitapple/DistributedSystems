@@ -1,8 +1,9 @@
 #include "array.h"
-
+#include <stdio.h>
 int main(int argc, char const *argv[])
 {
-   
+   /* The client uses the interfaces of array.h and using a switch 
+        prints a message deponding on the output of each the operation */
     int output;
     char * vector1 = "vector1";
     int elements1 = 100;
@@ -49,7 +50,7 @@ int main(int argc, char const *argv[])
     switch (output)
     {
     case 0:
-        printf("Value %d successfully inseted at positon %d of vecotr %s\n",value1,position1,vector1);
+        printf("Value %d successfully inserted at positon %d of vector %s\n",value1,position1,vector1);
         break;
     case -1:
         printf("Error when inserting value %d in positon %d of vector %s\n",value1,position1,vector1);
@@ -60,7 +61,7 @@ int main(int argc, char const *argv[])
     switch (output)
     {
     case 0:
-        printf("Value %d successfully inseted at positon %d of vecotr %s\n",value2,position2,vector2);
+        printf("Value %d successfully inserted at positon %d of vector %s\n",value2,position2,vector2);
         break;
     case -1:
         printf("Error when inserting value %d in positon %d of vector %s\n",value2,position2,vector2);
@@ -73,7 +74,7 @@ int main(int argc, char const *argv[])
     switch (output)
     {
     case 0:
-        printf("Value %d successfully rerieved at positon %d of vecotr %s\n",value,position,vector1);
+        printf("Value %d successfully rerieved at positon %d of vector %s\n",value,position,vector1);
         break;
     case -1:
         printf("Error when retriving value %d at positon %d of vector %s\n",value,position,vector1);
@@ -84,7 +85,7 @@ int main(int argc, char const *argv[])
     switch (output)
     {
     case 0:
-        printf("Value %d successfully rerieved at positon %d of vecotr %s\n",value,position,vector2);
+        printf("Value %d successfully rerieved at positon %d of vector %s\n",value,position,vector2);
         break;
     case -1:
         printf("Error when retriving value %d at positon %d of vector %s\n",value,position,vector2);

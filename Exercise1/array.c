@@ -1,141 +1,256 @@
 #include "array.h"
-# include <stdlib.h>
-# include <string.h>
-
 
 int init(char * name, int N){
-   mqd_t q_server;
+    /* Check name lenght and N value before contacting the server */
+    if(strlen(name)+1>VECTORNAME || N<0){
+        return -1;
+    }
+    /* Server and client queue parameters */
+    mqd_t q_server;
     mqd_t q_client;
-    struct request req;
+    Request req;
     struct mq_attr q_attr;
-
-   q_attr.mq_maxmsg = 1;
-   q_attr.mq_msgsize = sizeof(int);
-   sprintf(req.q_name,"/%d",getpid());
-   int output;
-
-   if((q_client = mq_open(req.q_name, O_CREAT | O_RDONLY,0700,&q_attr))==-1){
+    /* Size to 1 ad there will only be on message in client queue */
+    q_attr.mq_maxmsg = 1;
+    q_attr.mq_msgsize = sizeof(int);
+    /* The name of the client queue will be its process id, so it is fully identifiable*/
+    sprintf(req.q_name,"/%d",getpid());
+    /* Value to use for return */
+    int output;
+    /* Try to open client queue */
+    if((q_client = mq_open(req.q_name, O_CREAT | O_RDONLY,0700,&q_attr))==-1){
        perror("Can not create client queue");
-       exit(-1);
-   }
-   if((q_server = mq_open(SERVERQ,O_WRONLY))==-1) {
+       return -1;
+    }
+    /* Try to open server queue */
+    if((q_server = mq_open(SERVERQ,O_WRONLY))==-1) {
        perror("Can not create open server queue");
-        exit(-1);
+       return -1;
    }
-
-   req.operation = 0;
-   strcpy(req.name,name);
-   req.arg2 = N;
-
-    mq_send(q_server, &req, sizeof(struct request),0);
-    mq_receive(q_client,&output,sizeof(int),0);
-
-    mq_close(q_server);
-    mq_close(q_client);
-    mq_unlink(req.q_name);
+    /* Set the request parameters */
+    req.operation = 0;
+    /* As vector name is declared in this process memory space in order for another 
+        proces to have access for it we copy the value */
+    strcpy(req.name,name);
+    req.arg1 = N;
+    /* Send request to server queue */
+    if(( mq_send(q_server, (char *)&req, sizeof(Request),0))==-1){
+        perror("Error when sending message to server");
+        return -1;
+    }
+    /* Receive result from server queue */
+    if(( mq_receive(q_client,(char *)&output,sizeof(int),0))==-1){
+        perror("Error when receiving message from server");
+        return -1;
+    }
+    /* Close server queue desciptor */
+    if((mq_close(q_server))==-1){
+        perror("Can not close server queue descriptor");
+        return -1;
+    }
+    /* Close client queue desciptor */
+    if(( mq_close(q_client))==-1){
+        perror("Can not close client queue descriptor");
+        return -1;
+    }
+    /* Remove client queue name */
+    if(( mq_unlink(req.q_name))==-1){
+        perror("Can not remove the client queue name");
+        return -1;
+    }
     return output;
 }
 
 int set(char * name,int i,int value){
-     mqd_t q_server;
+    /* Check name lenght and i value before contacting the server */
+    if(strlen(name)+1>VECTORNAME || i<0){
+        return -1;
+    }
+     /* Server and client queue parameters */
+    mqd_t q_server;
     mqd_t q_client;
-    struct request req;
+    Request req;
     struct mq_attr q_attr;
-
-   q_attr.mq_maxmsg = 1;
-   q_attr.mq_msgsize = sizeof(int);
-   sprintf(req.q_name,"/%d",getpid());
-   int output;
-
-   if((q_client = mq_open(req.q_name, O_CREAT | O_RDONLY,0700,&q_attr))==-1){
+    /* Size to 1 ad there will only be on message in client queue */
+    q_attr.mq_maxmsg = 1;
+    q_attr.mq_msgsize = sizeof(int);
+    /* The name of the client queue will be its process id, so it is fully identifiable*/
+    sprintf(req.q_name,"/%d",getpid());
+    /* Value to use for return */
+    int output;
+    /* Try to open client queue */
+    if((q_client = mq_open(req.q_name, O_CREAT | O_RDONLY,0700,&q_attr))==-1){
        perror("Can not create client queue");
-        exit(-1);
-   }
-   if((q_server = mq_open(SERVERQ,O_WRONLY))==-1) {
+       return -1;
+    }
+    /* Try to open server queue */
+    if((q_server = mq_open(SERVERQ,O_WRONLY))==-1) {
        perror("Can not create open server queue");
-        exit(-1);
+       return -1;
    }
-
-   req.operation = 1;
-   strcpy(req.name,name);
-   req.arg2 = i;
-   req.arg3 = value;
-    mq_send(q_server, &req, sizeof(struct request),0);
-    mq_receive(q_client,&output,sizeof(int),0);
-
-    mq_close(q_server);
-    mq_close(q_client);
-    mq_unlink(req.q_name);
+  
+     /* Set the request parameters */
+     req.operation = 1;
+     /* As vector name is declared in this process memory space in order for another 
+        proces to have access for it we copy the value */
+     strcpy(req.name,name);
+     req.arg1 = i;
+     req.arg2 = value;
+     
+    /* Send request to server queue */
+    if(( mq_send(q_server, (char *)&req, sizeof(Request),0))==-1){
+         perror("Error when sending message to server");
+        return -1;
+    }
+    /* Receive result from server queue */
+    if(( mq_receive(q_client,(char *)&output,sizeof(int),0))==-1){
+        perror("Error when receiving message from server");
+        return -1;
+    }
+    /* Close server queue desciptor */
+    if((mq_close(q_server))==-1){
+        perror("Can not close server queue descriptor");
+        return -1;
+    }
+    /* Close client queue desciptor */
+    if(( mq_close(q_client))==-1){
+        perror("Can not close client queue descriptor");
+        return -1;
+    }
+    /* Remove client queue name */
+    if(( mq_unlink(req.q_name))==-1){
+        perror("Can not remove the client queue name");
+        return -1;
+    } 
     return output;
 }
 
 int get(char * name,int i, int * value){
-     mqd_t q_server;
+    /* Check name lenght and N value before contacting the server */
+    if(strlen(name)+1>VECTORNAME || i<0){
+        return -1;
+    }
+    /* Server and client queue parameters */
+    mqd_t q_server;
     mqd_t q_client;
-    struct request req;
+    Request req;
     struct mq_attr q_attr;
-
-   q_attr.mq_maxmsg = 1;
-   q_attr.mq_msgsize = sizeof(int);
-   sprintf(req.q_name,"/%d",getpid());
-   int output;
-
-   if((q_client = mq_open(req.q_name, O_CREAT | O_RDONLY,0700,&q_attr))==-1){
+    /* Size to 1 ad there will only be on message in client queue */
+    q_attr.mq_maxmsg = 1;
+    q_attr.mq_msgsize = sizeof(int);
+    /* The name of the client queue will be its process id, so it is fully identifiable*/
+    sprintf(req.q_name,"/%d",getpid());
+    /* Value to use for return */
+    int output;
+    /* Try to open client queue */
+    if((q_client = mq_open(req.q_name, O_CREAT | O_RDONLY,0700,&q_attr))==-1){
        perror("Can not create client queue");
-        exit(-1);
-   }
-   if((q_server = mq_open(SERVERQ,O_WRONLY))==-1) {
+       return -1;
+    }
+    /* Try to open server queue */
+    if((q_server = mq_open(SERVERQ,O_WRONLY))==-1) {
        perror("Can not create open server queue");
-        exit(-1);
+       return -1;
    }
-
+    /* Set the request parameters */
     req.operation = 2;
+    /* As vector name is declared in this process memory space in order for another 
+        proces to have access for it we copy the value */
     strcpy(req.name,name);
-   req.arg2 = i;
-   req.arg3 = value; 
+    req.arg1 = i; 
 
-    mq_send(q_server, &req, sizeof(struct request),0);
-    mq_receive(q_client,&output,sizeof(int),0);
-
-    mq_close(q_server);
-    mq_close(q_client);
-    mq_unlink(req.q_name);
+     /* Send request to server queue */
+    if(( mq_send(q_server, (char *)&req, sizeof(Request),0))==-1){
+         perror("Error when sending message to server");
+        return -1;
+    }
+    /* Receive result from server queue */
+    if(( mq_receive(q_client,(char *)&output,sizeof(int),0))==-1){
+         perror("Error when receiving message from server");
+        return -1;
+    }
+    /* Close server queue desciptor */
+    if((mq_close(q_server))==-1){
+        perror("Can not close server queue descriptor");
+        return -1;
+    }
+    /* Close client queue desciptor */
+    if(( mq_close(q_client))==-1){
+        perror("Can not close client queue descriptor");
+        return -1;
+    }
+    /* Remove client queue name */
+    if(( mq_unlink(req.q_name))==-1){
+        perror("Can not remove the client queue name");
+        return -1;
+    }
+    /* Check that the output value is not 0 or -1 to set its value*/
     if(output!=0 && output!=-1){
         *value = output;
         output = 0;
         return output;
     }
+    /* If value is not different than 0 we return value as 0, because the server
+        vector elements are initilized to 0 */
     *value = 0;
     return output;
 }
 
 int destroy (char * name){
-     mqd_t q_server;
+    /* Check name lenght before contacting the server */
+    if(strlen(name)+1>VECTORNAME){
+        return -1;
+    }
+    /* Server and client queue parameters */
+    mqd_t q_server;
     mqd_t q_client;
-    struct request req;
+    Request req;
     struct mq_attr q_attr;
-
-   q_attr.mq_maxmsg = 1;
-   q_attr.mq_msgsize = sizeof(int);
-   sprintf(req.q_name,"/%d",getpid());
-   int output;
-
-   if((q_client = mq_open(req.q_name, O_CREAT | O_RDONLY,0700,&q_attr))==-1){
+    /* Size to 1 ad there will only be on message in client queue */
+    q_attr.mq_maxmsg = 1;
+    q_attr.mq_msgsize = sizeof(int);
+    /* The name of the client queue will be its process id, so it is fully identifiable*/
+    sprintf(req.q_name,"/%d",getpid());
+    /* Value to use for return */
+    int output;
+    /* Try to open client queue */
+    if((q_client = mq_open(req.q_name, O_CREAT | O_RDONLY,0700,&q_attr))==-1){
        perror("Can not create client queue");
-        exit(-1);
-   }
-   if((q_server = mq_open(SERVERQ,O_WRONLY))==-1) {
+       return -1;
+    }
+    /* Try to open server queue */
+    if((q_server = mq_open(SERVERQ,O_WRONLY))==-1) {
        perror("Can not create open server queue");
-        exit(-1);
+       return -1;
    }
+    /* Set the request parameters */
+    req.operation = 3;
+    strcpy(req.name,name);
 
-   req.operation = 3;
-   strcpy(req.name,name);
-    mq_send(q_server, &req, sizeof(struct request),0);
-    mq_receive(q_client,&output,sizeof(int),0);
-
-    mq_close(q_server);
-    mq_close(q_client);
-    mq_unlink(req.q_name);
+    /* Send request to server queue */
+    if(( mq_send(q_server, (char *)&req, sizeof(Request),0))==-1){
+         perror("Error when sending message to server");
+        return -1;
+    }
+    /* Receive result from server queue */
+    if(( mq_receive(q_client,(char *)&output,sizeof(int),0))==-1){
+         perror("Error when receiving message from server");
+        return -1;
+    }
+    /* Close server queue desciptor */
+    if((mq_close(q_server))==-1){
+        perror("Can not close server queue descriptor");
+        return -1;
+    }
+    /* Close client queue desciptor */
+    if(( mq_close(q_client))==-1){
+        perror("Can not close client queue descriptor");
+        return -1;
+    }
+    /* Remove client queue name */
+    if(( mq_unlink(req.q_name))==-1){
+        perror("Can not remove the client queue name");
+        return -1;
+    }
     return output;
 }
