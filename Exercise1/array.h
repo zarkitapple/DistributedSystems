@@ -6,7 +6,7 @@
 # include <stdlib.h>
 # include <string.h>
 #define MAXSIZE 100
-#define VECTORNAME 10
+#define VECTORNAME 100
 #define SERVERQ "/SERVER"
 /* This struct defines the members of a request to the server */
 typedef struct request

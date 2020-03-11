@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #define MAXSIZE 100
-#define VECTORNAME 10
+#define VECTORNAME 100
 #define SERVERQ "/SERVER"
 #define VECTOR_INITIAL_CAPACITY 2
 #define TRUE 1
@@ -65,7 +65,7 @@ int find_vector(char * name){
 }
 
 /* This function process the operation on req->operation number*/
-int function_selector (struct request * req) {
+int function_selector (Request * req) {
     int result;
     switch (req->operation)
     {
@@ -161,13 +161,13 @@ int function_selector (struct request * req) {
 }
 /* Start routine of a new thread, copies to local the request, proccesses the request
     and sends ouput to the client queue */
-void process_request(struct request * req){
-    struct request req_local;
+void process_request(Request * req){
+    Request req_local;
     mqd_t q_client;
 
     pthread_mutex_lock(&mutex_msg);
     /* shallow copy but deep copy is not needed as there are no pointers in the request struct */
-    memcpy((struct request *)&req_local,(struct request *) req,sizeof(struct request));
+    memcpy((Request *)&req_local,(Request *) req,sizeof(Request));
     msg_not_copied = FALSE;
     pthread_cond_signal(&cond_msg);
 
