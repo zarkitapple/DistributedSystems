@@ -2,7 +2,7 @@
 #include <errno.h>
 #include "lines.h"
 
-int enviar(int socket, char *mensaje, int longitud)
+int send_msg(int socket, char *mensaje, int longitud)
 {
 	int r;
 	int l = longitud;
@@ -20,7 +20,7 @@ int enviar(int socket, char *mensaje, int longitud)
 		return(0);	/* se ha enviado longitud */
 }
 
-int recibir(int socket, char *mensaje, int longitud)
+int recieve_msg(int socket, char *mensaje, int longitud)
 {
 	int r;
 	int l = longitud;
@@ -62,12 +62,12 @@ ssize_t readLine(int fd, void *buffer, size_t n)
         	if (numRead == -1) {	
             		if (errno == EINTR)	/* interrupted -> restart read() */
                 		continue;
-            	else
-			return -1;		/* some other error */
+            else
+				return -1;		/* some other error */
         	} else if (numRead == 0) {	/* EOF */
             		if (totRead == 0)	/* no byres read; return 0 */
                 		return 0;
-			else
+					else
                 		break;
         	} else {			/* numRead must be 1 if we get here*/
             		if (ch == '\n')
@@ -75,14 +75,14 @@ ssize_t readLine(int fd, void *buffer, size_t n)
             		if (ch == '\0')
                 		break;
             		if (totRead < n - 1) {		/* discard > (n-1) bytes */
-				totRead++;
-				*buf++ = ch; 
+							totRead++;
+							*buf++ = ch; 
 			}
 		} 
 	}
 	
 	*buf = '\0';
-    	return totRead;
+    return totRead;
 }
 
 
@@ -97,10 +97,10 @@ ssize_t writeLine(int fd, void *buffer, size_t n)
                 return -1;
         }
 
-        err = enviar(fd, buffer, n);
+        err = write(fd, buffer, n);
         if (err == -1)
                 return err;
-        err = enviar(fd, endLine, 1);
+        err = write(fd, endLine, 1);
         if (err == -1)
                 return err;
 

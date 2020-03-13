@@ -1,5 +1,6 @@
 package source;
 
+import java.io.DataInputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -15,10 +16,13 @@ public class MyThread extends Thread{
     
     public void run() {
         try {
-            server_socket.accept();
+            Socket socket = server_socket.accept();
+            DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+            
             
         } catch (Exception e) {
-            //TODO: handle exception
+            System.err.println("Exception "+e.toString());
+            e.printStackTrace();
         }
     }
 }

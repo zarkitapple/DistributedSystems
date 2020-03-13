@@ -155,6 +155,7 @@ class client {
 
 			send_stream.write(command);
 			send_stream.write(user_name);
+			send_stream.write(Integer.toString(server_port).getBytes());
 
 			int receive_output = receive_Stream.readByte();
 
