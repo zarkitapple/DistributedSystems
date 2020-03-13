@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include "lines.h"
+#define MAXSIZE 256
 
 void print_usage() {
 	    printf("Usage: server -p puerto \n");
