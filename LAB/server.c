@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include "lines.h"
+#include "LinkedList.h"
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -12,16 +13,106 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <linux/limits.h>
+#include <fcntl.h>
 #define MESSAGE_SIZE 256
+#define PORT_SIZE 8
 #define MAX_REQUESTS 10
-#define USERS_DIRECTOY "/Users"
+#define USERS_DIRECTORY "/Users"
+#define USERS_FILE "files.txt"
 #define REGISTER "REGISTER"
 #define UNREGISTER "UNREGISTER"
 #define CONNECT "CONNECT"
+#define DISCONNECT "DISCONNECT"
+#define PUBLISH "PUBLISH"
+
+
 pthread_mutex_t mutex_msg;
 int msg_not_copied = 1;
 pthread_cond_t cond_msg;
 
+List * connected_users;
+
+int remove_directory(const char *path)
+{
+   DIR *d = opendir(path);
+   size_t path_len = strlen(path);
+   int r = -1;
+
+   if (d)
+   {
+      struct dirent *p;
+      r = 0;
+      while (!r && (p=readdir(d)))
+      {
+          int r2 = -1;
+          char *buf;
+          size_t len;
+
+          /* Skip the names "." and ".." as we don't want to recurse on them. */
+          if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, ".."))
+          {
+             continue;
+          }
+
+          len = path_len + strlen(p->d_name) + 2; 
+          buf = malloc(len);
+
+          if (buf)
+          {
+             struct stat statbuf;
+
+             snprintf(buf, len, "%s/%s", path, p->d_name);
+
+             if (!stat(buf, &statbuf))
+             {
+                if (S_ISDIR(statbuf.st_mode))
+                {
+                   r2 = remove_directory(buf);
+                }
+                else
+                {
+                   r2 = unlink(buf);
+                }
+             }
+             free(buf);
+          }
+
+          r = r2;
+      }
+      closedir(d);
+   }
+   if (!r)
+   {
+      r = rmdir(path);
+   }
+   return r;
+}
+
+int isusr_registered(char * user_name){
+	DIR * directory;
+	struct dirent * d_entry;
+	char dir_path[PATH_MAX];
+
+	getcwd(dir_path,PATH_MAX);
+	strcat(dir_path,USERS_DIRECTORY);
+
+	if((directory= opendir(dir_path))==NULL){
+		perror("Error when opening users directory");
+		closedir(directory);
+		return -1;
+	}
+	while ((d_entry = readdir(directory)))
+	{
+		if(strcmp(d_entry->d_name,user_name)==0){
+			/* USER IS ALREADY REGISTERED */
+			closedir(directory);
+			return 1;
+		}
+	}
+	/* not registered */
+	closedir(directory);
+	return 0;
+}
 
 int register_user (int socket) {
 	char user_name[MESSAGE_SIZE];
@@ -30,64 +121,149 @@ int register_user (int socket) {
 		   perror("Error when recieving data");
 		   return 2;
 	}
-	DIR * directory;
-	struct dirent * d_entry;
-	char path[PATH_MAX];
+	int user_registered = isusr_registered(user_name);
+	char dir_path[PATH_MAX];
+	switch (user_registered)
+	{
+	case 0:
+		getcwd(dir_path,PATH_MAX);
+		strcat(dir_path,USERS_DIRECTORY);
+		char user_path[260];
+		sprintf(user_path,"/%s",user_name);
+		strcat(dir_path,user_path);
 
-	getcwd(path,PATH_MAX);
-	strcat(path,USERS_DIRECTOY);
-
-	if((directory= opendir(path))==NULL){
-		perror("Error when opening users directory");
+		if(mkdir(dir_path,0777)==-1){
+			perror("Cannot create user directory");
+			return 2;
+		}
+		return 0;
+	
+	case 1:
+		return 1;
+	default:
 		return 2;
 	}
-	while ((d_entry = readdir(directory)))
-	{
-		if(strcmp(d_entry->d_name,user_name)==0){
-			return 1;
-		}
+	/*
+	char file_path[11];
+	sprintf(file_path,"/%s",USERS_FILE);
+	strcat(path,file_path);
+	printf("Path users directory name file %s\n",path);
+
+	if ((open(path, O_CREAT | O_RDWR,0664))==-1){
+		perror("Cannot create user file");
+		return 2;
 	}
-	if(mkdir(user_name,0777)==-1){
-		perror("Cannot create user directory");
-	}
-	return 0;
+	*/
 }
-/* 
-int unregister_user(int sd){
+ 
+int unregister_user(int socket){
 	char user_name[MESSAGE_SIZE];
     int number_received;
 	if((number_received=readLine(socket,user_name,MESSAGE_SIZE))==-1){
 		   perror("Error when recieving data");
 		   return 2;
 	}
-	DIR * directory;
-	struct dirent * d_entry;
-	char path[PATH_MAX];
+	int user_registered = isusr_registered(user_name);
+	char dir_path[PATH_MAX];
+	switch (user_registered)
+	{
+	case 1:
+		getcwd(dir_path,PATH_MAX);
+		strcat(dir_path,USERS_DIRECTORY);
 
-	getcwd(path,PATH_MAX);
-	strcat(path,USERS_DIRECTOY);
-
-	if((directory= opendir(path))==NULL){
-		perror("Error when opening users directory");
+		char user_path[260];
+		sprintf(user_path,"/%s",user_name);
+		strcat(dir_path,user_path);
+		/* Remove directory entry */
+		if((remove_directory(dir_path))==-1) {
+			perror("Error when deleting users data");
+			return 2;
+		}
+		/* remove from connected */
+		delete_element(user_name,connected_users);
+		return 0;
+	case 0:
+		return 1;
+	default:
 		return 2;
 	}
-	while (d_entry = readdir(directory))
-	{
-		if(strcmp(d_entry->d_name,user_name)==0){
-		}
+} 
+int connect_user(int socket){
+	char user_name[MESSAGE_SIZE];
+    int number_received;
+	/* receive user name */
+	if((number_received=readLine(socket,user_name,MESSAGE_SIZE))==-1){
+		   perror("Error when recieving data");
+		   return 3;
 	}
+	/* receive user port */
+	char user_port [PORT_SIZE];
+	if((number_received=readLine(socket,user_port,PORT_SIZE))==-1){
+		   perror("Error when recieving data");
+		   return 3;
+	}
+
+	int user_registered = isusr_registered(user_name);
+	int user_connected;
 	
-	return 0;
-} */
+	switch (user_registered)
+	{
+	case 1:
+		user_connected = find_element(user_name,connected_users);
+		if(user_connected){
+			return 2;
+		}
+		UserServer tmp;
+		strcpy(tmp.name,user_name);
+		strcpy(tmp.port,user_port);
+		add_element(&tmp,connected_users);
+		return 0;
+	case 0:
+		return 1;
+	default:
+		return 3;
+	}
+}
 
-
-
-
+int disconnect_user(int socket){
+	char user_name[MESSAGE_SIZE];
+    int number_received;
+	if((number_received=readLine(socket,user_name,MESSAGE_SIZE))==-1){
+		   perror("Error when recieving data");
+		   return 3;
+	}
+	int user_registered = isusr_registered(user_name);
+	int user_connected;
+	switch (user_registered)
+	{
+	case 1:
+		user_connected = find_element(user_name,connected_users);
+		if(user_connected){
+			delete_element(user_name,connected_users);
+			return 0;
+		}
+		return 2;
+	case 0:
+		return 1;
+	default:
+		return 3;
+	}
+}
 
 int command_selector (int socket,char * buffer, int size){
 	int output;
+	puts("Processing request step 2");
 	if(strncmp(buffer,REGISTER,size)==0) {
-		output  = register_user(socket);
+		output = register_user(socket);
+	}
+	else if(strncmp(buffer,UNREGISTER,size)==0) {
+		output = unregister_user(socket);
+	}
+	else if(strncmp(buffer,CONNECT,size)==0){
+		output = connect_user(socket);
+	}
+	else if (strncmp(buffer,DISCONNECT,size)==0){
+		output = disconnect_user(socket);
 	}
 	
 	return output;
@@ -107,12 +283,13 @@ void process_request(int * sd){
     char message[MESSAGE_SIZE];
     int number_received;
 	int output;
-
+	puts("Processing request step 1");
     if((number_received=readLine(socket,message,MESSAGE_SIZE))==-1){
 		   perror("Error when recieving data");
 	}
 	else {
 		output = command_selector(socket,message,number_received);
+		puts("Processing request step 6");
 		char response [4];
 		sprintf(response,"%d",output);
 		if(write(socket,response,1)==-1){
@@ -150,6 +327,11 @@ int main(int argc, char *argv[]) {
 
 	printf("Port: %s\n", port);
 
+	if(!(connected_users = create_list())){
+		perror("Error when creating connected users queue");
+		return -1;
+	}
+
 	int accept_socket, data_socket;
 	struct sockaddr_in server_addr, client_addr;
 	accept_socket = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
@@ -160,6 +342,7 @@ int main(int argc, char *argv[]) {
 
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = INADDR_ANY;
+	/* change port o given port atoi */
 	server_addr.sin_port = htons(4200);
 
 	bind(accept_socket,(struct sockaddr *)&server_addr,sizeof(server_addr));
@@ -177,7 +360,7 @@ int main(int argc, char *argv[]) {
 
 	while (1)
 	{
-		
+		puts("Wait for request");
 		if(( data_socket = accept(accept_socket,(struct sockaddr *)&client_addr, &size))==-1){
              perror("Error when acepting");
         }

@@ -2,9 +2,11 @@ package source;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import gnu.getopt.Getopt;
-import source.MyThread;
+
 class client {
 	
 	
@@ -13,10 +15,14 @@ class client {
 	private static String _server   = null;
 	private static int _port = -1;
 	private static final int message_size = 256;
+	private static MyThread server_Thread;
+	private static AtomicBoolean server_exit = new AtomicBoolean(true);
 	enum COMMANDS {
 		REGISTER,
 		UNREGISTER,
-		CONNECT
+		CONNECT,
+		DISCONNECT,
+		PUBLISH
 	}
 	
 	/********************* METHODS ********************/
@@ -25,19 +31,24 @@ class client {
 		System.out.println(userString.length());
 		/* truncate string */
 		if (userString.length()>message_size-1){
+			System.out.println("Truncate");
 			byte_array = userString.substring(0, message_size).getBytes();
 			byte_array[message_size-1] = '\n';
 		}
 		else {
+			System.out.println("Not Truncate");
+			userString = userString +'\0';
 			byte_array = userString.getBytes();
-			byte_array[userString.length()]='\n';
 		}
+		System.out.println(Arrays.toString(byte_array));
 		return byte_array;
 	}
 
 	private static byte [] parse_command (String type){
-		byte [] command = COMMANDS.valueOf(type).toString().getBytes();
-		command[command.length] = '\n';
+		String command_string = COMMANDS.valueOf(type).toString();
+		command_string = command_string + '\0';
+		byte [] command = command_string.getBytes();
+		System.out.println(Arrays.toString(command));
 		return command;
 	}
 
@@ -53,11 +64,6 @@ class client {
 		// Write your code here
 		byte [] user_name = parse_string(user);
 		byte [] command = parse_command(COMMANDS.REGISTER.toString());
-		System.out.println("Byte array");
-		for (byte b : user_name) {
-			System.out.print(b+"");
-		}
-		System.out.println();
 
 		try {
 			Socket socket = new Socket(_server,_port);
@@ -65,29 +71,28 @@ class client {
 			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
 			send_stream.write(command);
 			send_stream.write(user_name);
-
-			int receive_output = receive_Stream.readByte();
-
+			int receive_output = Character.getNumericValue(receive_Stream.readByte());
 			receive_Stream.close();
 			send_stream.close();
 			socket.close();
 			
 			switch (receive_output) {
 				case 1:
-					throw new Exception("USER NAME IN USE");
-			
+					System.out.println("USER NAME IN USE");
+					break;
 				case 2:
-					throw new Exception("REGISTER FAIL");
+					System.out.println("REGISTER FAIL");
+					break;
+				default:
+					System.out.println("REGISTER OK");
 			}
 
 			
 		} catch (Exception e) {
-			
+			System.out.println("REGISTER FAIL");
 			System.err.println("Exception"+ e.toString());
 			e.printStackTrace();
 		}  
-		
-		System.out.println("REGISTER OK");
 		return 0;
 	}
 	
@@ -109,7 +114,7 @@ class client {
 			send_stream.write(command);
 			send_stream.write(user_name);
 
-			int receive_output = receive_Stream.readByte();
+			int receive_output = Character.getNumericValue(receive_Stream.readByte());
 
 			receive_Stream.close();
 			send_stream.close();
@@ -117,19 +122,21 @@ class client {
 			
 			switch (receive_output) {
 				case 1:
-					throw new Exception("USER DOES NOT EXIST");
-			
+					System.out.println("USER DOES NOT EXIST");
+					break;
 				case 2:
-					throw new Exception("UNREGISTER FAIL");
+					System.out.println("UNREGISTER FAIL");
+					break;
+				default:
+					System.out.println("UNREGISTER OK");
 			}
 
 			
 		} catch (Exception e) {
-			
+			System.out.println("UNREGISTER FAIL");
 			System.err.println("Exception"+ e.toString());
 			e.printStackTrace();
 		}  
-		System.out.println("UNREGISTER OK");
 		return 0;
 	}
 	
@@ -147,17 +154,22 @@ class client {
 			ServerSocket server_socket = new ServerSocket(0);
 
 			int server_port = server_socket.getLocalPort();
-			new MyThread(server_socket).start();
-
+			server_Thread = new MyThread(server_socket,server_exit);
+			server_Thread.start();
 			Socket socket = new Socket(_server,_port);
+
 			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
+
 			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+
 
 			send_stream.write(command);
 			send_stream.write(user_name);
-			send_stream.write(Integer.toString(server_port).getBytes());
 
-			int receive_output = receive_Stream.readByte();
+			String port = Integer.toString(server_port) +"\0";
+			send_stream.write(port.getBytes());
+
+			int receive_output = Character.getNumericValue(receive_Stream.readByte());
 
 			receive_Stream.close();
 			send_stream.close();
@@ -165,18 +177,24 @@ class client {
 			
 			switch (receive_output) {
 				case 1:
-					throw new Exception("CONNECT FAIL, USER DOES NOT EXIST");
-			
+					System.out.println("CONNECT FAIL, USER DOES NOT EXIST");
+					break;
 				case 2:
-					throw new Exception("CONNECT FAIL, USER ALREADY CONNECTED");
+					System.out.println("CONNECT FAIL, USER ALREADY CONNECTED");
+					break;
+				case 3:
+					System.out.println("CONNECT FAIL");
+					break;
+				default:
+					System.out.println("CONNECT OK");
 			}
 
 
 		} catch (Exception e) {
+			System.out.println("CONNECT FAIL");
 			System.err.println("Exception"+ e.toString());
 			e.printStackTrace();
 		}
-		System.out.println("CONNECT OK");
 		return 0;
 	}
 	
@@ -187,9 +205,47 @@ class client {
 	 */
 	static int disconnect(String user) 
 	{
-		// Write your code here
-		System.out.println("DISCONNECT " + user);
+		byte [] user_name = parse_string(user);
+		byte [] command = parse_command(COMMANDS.DISCONNECT.toString());
+		
+		try {
+			server_exit.set(false);
+			System.out.println("Finished thread");
+			Socket socket = new Socket(_server,_port);
+			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
+			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+
+			send_stream.write(command);
+			send_stream.write(user_name);
+
+			int receive_output = Character.getNumericValue(receive_Stream.readByte());
+
+			receive_Stream.close();
+			send_stream.close();
+			socket.close();
+			
+			switch (receive_output) {
+				case 1:
+					System.out.println("DISCONNECT FAIL / USER DOES NOT EXIST");
+					break;
+				case 2:
+					System.out.println("DISCONNECT FAIL / USER NOT CONNECTED");
+					break;
+				case 3:
+					System.out.println("DISCONNECT FAIL");
+					break;
+				default:
+					System.out.println("DISCONNECT OK");
+			}
+
+			
+		} catch (Exception e) {
+			System.out.println("UNREGISTER FAIL");
+			System.err.println("Exception"+ e.toString());
+			e.printStackTrace();
+		}  
 		return 0;
+		
 	}
 
 	 /**
@@ -443,6 +499,7 @@ class client {
 		// Write code here
 		
 		shell();
+		server_exit.set(false);
 		System.out.println("+++ FINISHED +++");
 	}
 }
