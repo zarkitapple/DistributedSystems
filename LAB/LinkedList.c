@@ -58,7 +58,7 @@ void delete_element(char * data, List * list){
   }                                 
 }  
 
-int find_element (char * data, List * list){
+int find_element_byname (char * data, List * list){
     Node * current = list->head;     
     while(current!=NULL){
         if(strcmp(current->data.name,data)==0){
@@ -68,6 +68,18 @@ int find_element (char * data, List * list){
     }    
     return 0;   
     
+}
+int get_element_byaddress (char * ip, List * list, char * name){
+    Node * current = list->head;     
+    while(current!=NULL){
+        if(strcmp(current->data.ip_address,ip)==0){
+            char * name = malloc(sizeof(char)*MAX_SIZE); 
+            strcpy(name,current->data.name);
+            return 1;
+        }
+        current = current->next;
+    }    
+    return 0;  
 }
 
 void destroy_list(List * list){

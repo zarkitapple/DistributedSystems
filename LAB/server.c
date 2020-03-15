@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <netinet/in.h>
 #include "lines.h"
 #include "LinkedList.h"
 #include <netdb.h>
@@ -16,9 +17,9 @@
 #include <fcntl.h>
 #define MESSAGE_SIZE 256
 #define PORT_SIZE 8
+#define IP_SIZE 12
 #define MAX_REQUESTS 10
 #define USERS_DIRECTORY "/Users"
-#define USERS_FILE "files.txt"
 #define REGISTER "REGISTER"
 #define UNREGISTER "UNREGISTER"
 #define CONNECT "CONNECT"
@@ -87,6 +88,31 @@ int remove_directory(const char *path)
    }
    return r;
 }
+
+int file_exists (char * file_name, char * directory_path){
+	DIR * directory;
+	struct dirent * d_entry;
+	char dir_path[PATH_MAX];
+	strcat(dir_path,directory_path);
+
+	if((directory= opendir(dir_path))==NULL){
+		perror("Error when opening users directory");
+		closedir(directory);
+		return -1;
+	}
+	while ((d_entry = readdir(directory)))
+	{
+		if(strcmp(d_entry->d_name,file_name)==0){
+			/* file exists */
+			closedir(directory);
+			return 1;
+		}
+	}
+	/* not exits */
+	closedir(directory);
+	return 0;
+}
+
 
 int isusr_registered(char * user_name){
 	DIR * directory;
@@ -209,13 +235,22 @@ int connect_user(int socket){
 	switch (user_registered)
 	{
 	case 1:
-		user_connected = find_element(user_name,connected_users);
+		user_connected = find_element_byname(user_name,connected_users);
 		if(user_connected){
 			return 2;
 		}
+		struct sockaddr_in client_addr;
+		memset((char *)&client_addr,0,sizeof(client_addr));
+		socklen_t size = sizeof(client_addr);
+		if((getsockname(socket,(struct sockaddr *)&client_addr,&size ))==-1){
+			perror("Cannot get socket address");
+			return 3;
+		}
+		char * address = inet_ntoa(client_addr.sin_addr); 
 		UserServer tmp;
 		strcpy(tmp.name,user_name);
 		strcpy(tmp.port,user_port);
+		strcpy(tmp.ip_address,address);
 		add_element(&tmp,connected_users);
 		return 0;
 	case 0:
@@ -237,7 +272,7 @@ int disconnect_user(int socket){
 	switch (user_registered)
 	{
 	case 1:
-		user_connected = find_element(user_name,connected_users);
+		user_connected = find_element_byname(user_name,connected_users);
 		if(user_connected){
 			delete_element(user_name,connected_users);
 			return 0;
@@ -249,6 +284,66 @@ int disconnect_user(int socket){
 		return 3;
 	}
 }
+
+int publish_file(int socket){
+	char file_name[MESSAGE_SIZE];
+    int number_received;
+	/* receive user name */
+	if((number_received=readLine(socket,file_name,MESSAGE_SIZE))==-1){
+		perror("Error when recieving data");
+		return 4;
+	}
+	/* receive user port */
+	char file_description[MESSAGE_SIZE];
+	if((number_received=readLine(socket,file_description,MESSAGE_SIZE))==-1){
+		perror("Error when recieving data");
+		return 4;
+	}
+
+	/* Check that we are connected */
+	struct sockaddr_in client_addr;
+	memset((char *)&client_addr,0,sizeof(client_addr));
+	socklen_t size = sizeof(client_addr);
+	if((getsockname(socket,(struct sockaddr *)&client_addr,&size ))==-1){
+		perror("Cannot get socket address");
+	}
+	char * address = inet_ntoa(client_addr.sin_addr); 
+	char * user_name = NULL;
+	int user_connected = get_element_byaddress(address,connected_users,user_name);
+	char file_path [PATH_MAX];
+	char user_path[260];
+	char file_path_name[260];
+	switch (user_connected)
+	{
+	case 1:
+
+		getcwd(file_path,PATH_MAX);
+		strcat(file_path,USERS_DIRECTORY); /*/Users*/
+		sprintf(user_path,"/%s",user_name);
+		free(user_name);
+		strcat(file_path,user_path);/*/Users/username*/
+		
+		int file;
+		/* First we check if file exists */
+		if((file=file_exists(file_name,file_path))){
+			return 3;
+		}
+		sprintf(file_path,"/%s",file_name);
+		strcat(file_path,file_path_name);/*/Users/username/filename*/
+		if((file=open(file_path, O_CREAT | O_RDWR,0664))==-1){
+			perror("Error when creating file");
+			return 4;
+		}
+		return 0;
+	
+	default:
+		/* User not connected */ 
+		return 2;
+	}
+	
+	return 0;
+}
+
 
 int command_selector (int socket,char * buffer, int size){
 	int output;
@@ -265,7 +360,9 @@ int command_selector (int socket,char * buffer, int size){
 	else if (strncmp(buffer,DISCONNECT,size)==0){
 		output = disconnect_user(socket);
 	}
-	
+	else if (strncmp(buffer,PUBLISH,size)==0) {
+		output = publish_file(socket);
+	}
 	return output;
 }
 
@@ -343,7 +440,7 @@ int main(int argc, char *argv[]) {
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = INADDR_ANY;
 	/* change port o given port atoi */
-	server_addr.sin_port = htons(4200);
+	server_addr.sin_port = htons(atoi(port));
 
 	bind(accept_socket,(struct sockaddr *)&server_addr,sizeof(server_addr));
 

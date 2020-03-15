@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #define MAXSIZE 100
 #define VECTORNAME 100
-#define SERVERQ "/SERVER"
+#define SERVERQ "/SERVER00383532"
 #define VECTOR_INITIAL_CAPACITY 2
 #define TRUE 1
 #define FALSE 0
@@ -22,6 +22,13 @@ typedef struct request
     /* Name of the client queue MAXSIZE 100*/
     char q_name[MAXSIZE];
 } Request;
+/* Response of the server to the client */
+typedef struct response {
+    /* server operation output */
+    int output;
+    /* returned data for get operation */
+    int data;
+} Response;
 
 /* This struct defines the members of a Vector */
 typedef struct vector
@@ -65,7 +72,7 @@ int find_vector(char * name){
 }
 
 /* This function process the operation on req->operation number*/
-int function_selector (Request * req) {
+int function_selector (Request * req, Response * server_response) {
     int result;
     switch (req->operation)
     {
@@ -103,9 +110,11 @@ int function_selector (Request * req) {
             return 1;
         }
         /* if Vector exits and its size is the same as the new size */
-        else if(result!=-1 && (storage.vectors[result].size == req->arg2)){
+        else if(result!=-1 && (storage.vectors[result].size == req->arg1)){
+           
             return 0;
         }
+
         return -1;
     
     case 1:
@@ -132,7 +141,7 @@ int function_selector (Request * req) {
             return -1;
         }
         /* Return the vector element */
-        result = storage.vectors[result].elements[req->arg1];
+        server_response->data = storage.vectors[result].elements[req->arg1];
         return result; 
     case 3:
         /* destroy(name) */
@@ -173,7 +182,9 @@ void process_request(Request * req){
 
     pthread_mutex_unlock(&mutex_msg);
     /* call function selector to process the request */
-    int result = function_selector(&req_local);
+    Response server_response;
+    int result = function_selector(&req_local,&server_response);
+    server_response.output = result;
 
     if((q_client = mq_open(req_local.q_name,O_WRONLY))==-1){
         perror("Error when opening client queue");
@@ -183,7 +194,7 @@ void process_request(Request * req){
     {
 
         //print_state();
-        if((mq_send(q_client,(char *)&result,sizeof(int),0))==-1){
+        if((mq_send(q_client,(char *)&server_response,sizeof(Response),0))==-1){
             perror("Error when sending output to client");
             pthread_exit(0);
         }

@@ -3,11 +3,11 @@
 #include <mqueue.h>
 #include <stdio.h>
 #include <unistd.h>
-# include <stdlib.h>
-# include <string.h>
+#include <stdlib.h>
+#include <string.h>
 #define MAXSIZE 100
 #define VECTORNAME 100
-#define SERVERQ "/SERVER"
+#define SERVERQ "/SERVER00383532"
 /* This struct defines the members of a request to the server */
 typedef struct request
 {
@@ -21,6 +21,14 @@ typedef struct request
     /* Name of the client queue MAXSIZE 100*/
     char q_name[MAXSIZE];
 } Request;
+
+/* Response of the server to the client */
+typedef struct response {
+    /* server operation output */
+    int output;
+    /* returned data for get operation */
+    int data;
+} Response;
 
 /* This service allows to initialize a distributed vector of N integers.
 The function returns 1 when the vector is firstly created. If the vector is already created with the same

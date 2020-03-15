@@ -52,6 +52,25 @@ class client {
 		return command;
 	}
 
+	private static byte [] parse_file_name (String file_name){
+		byte [] byte_array;
+		String file_parsed = file_name.replaceAll("\\s","");
+		System.out.println(file_name.length());
+		/* truncate string */
+		if (file_name.length()>message_size-1){
+			System.out.println("Truncate");
+			byte_array = file_name.substring(0, message_size).getBytes();
+			byte_array[message_size-1] = '\n';
+		}
+		else {
+			System.out.println("Not Truncate");
+			file_name = file_name +'\0';
+			byte_array = file_name.getBytes();
+		}
+		System.out.println(Arrays.toString(byte_array));
+		return byte_array;
+	}
+
 
 
 	/**
@@ -256,8 +275,45 @@ class client {
 	 */
 	static int publish(String file_name, String description) 
 	{
-		// Write your code here
-		System.out.println("PUBLISH " + file_name + " " + description);
+		
+		byte [] command = parse_command(COMMANDS.UNREGISTER.toString());
+		byte [] file = parse_string(file_name);
+		byte [] description_parsed = parse_string(description);
+		try {
+			Socket socket = new Socket(_server,_port);
+			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
+			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+
+			send_stream.write(command);
+			send_stream.write(file);
+			send_stream.write(description_parsed);
+
+			int receive_output = Character.getNumericValue(receive_Stream.readByte());
+
+			receive_Stream.close();
+			send_stream.close();
+			socket.close();
+			
+			switch (receive_output) {
+				case 2:
+					System.out.println("PUBLISH FAIL, USER NOT CONNECTED");
+					break;
+				case 3:
+					System.out.println("PUBLISH FAIL, CONTENT ALREADY PUBLISHED");
+					break;
+				case 4:
+					System.out.println("PUBLISH FAIL");
+					break;
+				default:
+					System.out.println("PUBLISH OK");
+			}
+
+			
+		} catch (Exception e) {
+			System.out.println("PUBLISH FAIL");
+			System.err.println("Exception"+ e.toString());
+			e.printStackTrace();
+		}  
 		return 0;
 	}
 

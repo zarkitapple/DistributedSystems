@@ -41,7 +41,7 @@ int main(int argc, char const *argv[])
     }
     
     int position1 = 0;
-    int value1 = 40;
+    int value1 = -1;
 
     int position2 = 120;
     int value2 = 30;
@@ -68,7 +68,7 @@ int main(int argc, char const *argv[])
         break;
     }
 
-    int value;
+    int value = 0;
     int position = 0;
      output = get(vector1,position,&value);
     switch (output)
