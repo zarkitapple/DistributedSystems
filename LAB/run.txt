@@ -1,6 +1,9 @@
 javac client.java
-java -cp . client -s < server > -p < port >
+java -s < server > -p < port >
 
-
+cd source
 javac -cp ../ client.java MyThread.java
 java -cp ../ source/client -s localhost -p 4200
+
+javac -cp source/client.java source/MyThread.java
+java -cp . source/client -s localhost -p 4200

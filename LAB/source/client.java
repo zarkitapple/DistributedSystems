@@ -3,7 +3,6 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import gnu.getopt.Getopt;
 
@@ -12,23 +11,26 @@ class client {
 	
 	/******************* ATTRIBUTES *******************/
 	
-	private static String _server   = null;
+	private static String _server = null;
 	private static int _port = -1;
 	private static final int message_size = 256;
+	private static byte [] _user = null;
 	private static MyThread server_Thread;
-	private static AtomicBoolean server_exit = new AtomicBoolean(true);
 	enum COMMANDS {
 		REGISTER,
 		UNREGISTER,
 		CONNECT,
 		DISCONNECT,
-		PUBLISH
+		PUBLISH,
+		DELETE,
+		LIST_USERS,
+		LIST_CONTENT
 	}
 	
 	/********************* METHODS ********************/
 	private static byte [] parse_string (String userString) {
 		byte [] byte_array;
-		System.out.println(userString.length());
+		System.out.println("String lenght  " +userString.length());
 		/* truncate string */
 		if (userString.length()>message_size-1){
 			System.out.println("Truncate");
@@ -51,28 +53,6 @@ class client {
 		System.out.println(Arrays.toString(command));
 		return command;
 	}
-
-	private static byte [] parse_file_name (String file_name){
-		byte [] byte_array;
-		String file_parsed = file_name.replaceAll("\\s","");
-		System.out.println(file_name.length());
-		/* truncate string */
-		if (file_name.length()>message_size-1){
-			System.out.println("Truncate");
-			byte_array = file_name.substring(0, message_size).getBytes();
-			byte_array[message_size-1] = '\n';
-		}
-		else {
-			System.out.println("Not Truncate");
-			file_name = file_name +'\0';
-			byte_array = file_name.getBytes();
-		}
-		System.out.println(Arrays.toString(byte_array));
-		return byte_array;
-	}
-
-
-
 	/**
 	 * @param user - User name to register in the system
 	 * 
@@ -81,18 +61,26 @@ class client {
 	static int register(String user) 
 	{	
 		// Write your code here
+		System.out.println("********************************************");
 		byte [] user_name = parse_string(user);
 		byte [] command = parse_command(COMMANDS.REGISTER.toString());
 
 		try {
 			Socket socket = new Socket(_server,_port);
+			
 			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+
 			send_stream.write(command);
+			send_stream.flush();
 			send_stream.write(user_name);
-			int receive_output = Character.getNumericValue(receive_Stream.readByte());
-			receive_Stream.close();
+			send_stream.flush();
+			
+
+			int receive_output = receive_Stream.readInt();
+
 			send_stream.close();
+			receive_Stream.close();
 			socket.close();
 			
 			switch (receive_output) {
@@ -127,16 +115,19 @@ class client {
 		
 		try {
 			Socket socket = new Socket(_server,_port);
+
 			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
 
 			send_stream.write(command);
+			send_stream.flush();
 			send_stream.write(user_name);
+			send_stream.flush();
 
-			int receive_output = Character.getNumericValue(receive_Stream.readByte());
-
-			receive_Stream.close();
+			int receive_output = receive_Stream.readInt();
+			
 			send_stream.close();
+			receive_Stream.close();
 			socket.close();
 			
 			switch (receive_output) {
@@ -170,30 +161,33 @@ class client {
 		byte [] user_name = parse_string(user);
 		byte [] command = parse_command(COMMANDS.CONNECT.toString());
 		try {
+			_user = user_name;
 			ServerSocket server_socket = new ServerSocket(0);
-
 			int server_port = server_socket.getLocalPort();
-			server_Thread = new MyThread(server_socket,server_exit);
+			server_Thread = new MyThread(server_socket);
 			server_Thread.start();
 			Socket socket = new Socket(_server,_port);
-
+			
 			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
-
 			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
 
 
 			send_stream.write(command);
+			send_stream.flush();
+
 			send_stream.write(user_name);
+			send_stream.flush();
 
 			String port = Integer.toString(server_port) +"\0";
 			send_stream.write(port.getBytes());
+			send_stream.flush();
 
-			int receive_output = Character.getNumericValue(receive_Stream.readByte());
+			int receive_output = receive_Stream.readInt();
 
-			receive_Stream.close();
 			send_stream.close();
+			receive_Stream.close();
 			socket.close();
-			
+
 			switch (receive_output) {
 				case 1:
 					System.out.println("CONNECT FAIL, USER DOES NOT EXIST");
@@ -228,19 +222,24 @@ class client {
 		byte [] command = parse_command(COMMANDS.DISCONNECT.toString());
 		
 		try {
-			server_exit.set(false);
-			System.out.println("Finished thread");
+			if(server_Thread!=null){
+				server_Thread.closeConnectionManually();
+			}
+
 			Socket socket = new Socket(_server,_port);
+
 			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
 
 			send_stream.write(command);
+			send_stream.flush();
 			send_stream.write(user_name);
+			send_stream.flush();
 
-			int receive_output = Character.getNumericValue(receive_Stream.readByte());
+			int receive_output = receive_Stream.readInt();
 
-			receive_Stream.close();
 			send_stream.close();
+			receive_Stream.close();
 			socket.close();
 			
 			switch (receive_output) {
@@ -259,7 +258,7 @@ class client {
 
 			
 		} catch (Exception e) {
-			System.out.println("UNREGISTER FAIL");
+			System.out.println("DISCONNECT FAIL");
 			System.err.println("Exception"+ e.toString());
 			e.printStackTrace();
 		}  
@@ -273,28 +272,43 @@ class client {
 	 * 
 	 * @return ERROR CODE
 	 */
-	static int publish(String file_name, String description) 
+	static int publish(String user ,String file_name, String description) 
 	{
-		
-		byte [] command = parse_command(COMMANDS.UNREGISTER.toString());
+		System.out.println("User     "+user);
+		System.out.println("file    "+file_name);
+		System.out.println("des   "+description);
+		byte [] command = parse_command(COMMANDS.PUBLISH.toString());
+		byte [] user_name = parse_string(user);
 		byte [] file = parse_string(file_name);
 		byte [] description_parsed = parse_string(description);
 		try {
 			Socket socket = new Socket(_server,_port);
+
 			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
 
 			send_stream.write(command);
+			send_stream.flush();
+
+			send_stream.write(user_name);
+			send_stream.flush();
+
 			send_stream.write(file);
+			send_stream.flush();
+
 			send_stream.write(description_parsed);
+			send_stream.flush();
 
-			int receive_output = Character.getNumericValue(receive_Stream.readByte());
-
-			receive_Stream.close();
+			int receive_output = receive_Stream.readInt();
+	
 			send_stream.close();
+			receive_Stream.close();
 			socket.close();
 			
 			switch (receive_output) {
+				case 1:
+					System.out.println("PUBLISH FAIL, USER NOT REGISTERED");
+					break;
 				case 2:
 					System.out.println("PUBLISH FAIL, USER NOT CONNECTED");
 					break;
@@ -322,10 +336,55 @@ class client {
 	 * 
 	 * @return ERROR CODE
 	 */
-	static int delete(String file_name)
+	static int delete(String user,String file_name)
 	{
-		// Write your code here
-		System.out.println("DELETE " + file_name);
+		byte [] command = parse_command(COMMANDS.DELETE.toString());
+		byte [] user_name = parse_string(user);
+		byte [] file = parse_string(file_name);
+		try {
+			Socket socket = new Socket(_server,_port);
+
+			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
+			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+
+			send_stream.write(command);
+			send_stream.flush();
+
+			send_stream.write(user_name);
+			send_stream.flush();
+
+			send_stream.write(file);
+			send_stream.flush();
+
+			int receive_output = receive_Stream.readInt();
+			
+			send_stream.close();
+			receive_Stream.close();
+			socket.close();
+			
+			switch (receive_output) {
+				case 1:
+					System.out.println("DELETE FAIL, USER NOT EXISTS");
+					break;
+				case 2:
+					System.out.println("DELETE FAIL, USER NOT CONNECTED");
+					break;
+				case 3:
+					System.out.println("DELETE FAIL, CONTENT NOT PUBLISHED");
+					break;
+				case 4:
+					System.out.println("DELETE FAIL");
+					break;
+				default:
+					System.out.println("DELETE OK");
+			}
+
+			
+		} catch (Exception e) {
+			System.out.println("DELETE FAIL");
+			System.err.println("Exception"+ e.toString());
+			e.printStackTrace();
+		}  
 		return 0;
 	}
 
@@ -334,8 +393,51 @@ class client {
 	 */
 	static int list_users()
 	{
-		// Write your code here
-		System.out.println("LIST_USERS " );
+		byte [] command = parse_command(COMMANDS.LIST_USERS.toString());
+		try {
+			Socket socket = new Socket(_server,_port);
+
+			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
+			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+
+			send_stream.write(command);
+			send_stream.flush();
+
+		
+			int receive_output = receive_Stream.readInt();
+			System.out.println("output " + receive_output);
+
+			switch (receive_output) {
+				case 1:
+					System.out.println("LIST_USERS FAIL, USER DOES NOT EXIST");
+					return 0;
+				case 2:
+					System.out.println("LIST_USERS FAIL, USER NOT CONNECTED");
+					return 0;
+				case 3:
+					System.out.println("LIST_USERS FAIL");
+					return 0;
+			}
+			
+			int number_users = receive_Stream.readInt();
+
+			BufferedReader receive_users = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			System.out.println("LIST_USERS OK");
+			for (int ii = 0; ii < number_users; ii++) {
+				System.out.println(receive_users.readLine());
+			}
+			
+			receive_users.close();
+			send_stream.close();
+			receive_Stream.close();
+			socket.close();
+
+		} catch (Exception e) {
+			System.out.println("LIST_USERS FAIL");
+			System.err.println("Exception "+ e.toString());
+			e.printStackTrace();
+			
+		}  
 		return 0;
 	}
 
@@ -348,7 +450,56 @@ class client {
 	static int list_content(String user_name)
 	{
 		// Write your code here
-		System.out.println("LIST_CONTENT " + user_name);
+		byte [] command = parse_command(COMMANDS.LIST_CONTENT.toString());
+		byte [] name = parse_string(user_name);
+		try {
+			Socket socket = new Socket(_server,_port);
+
+			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
+			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+
+			send_stream.write(command);
+			send_stream.flush();
+			send_stream.write(name);
+			send_stream.flush();
+
+			int receive_output = receive_Stream.readInt();
+			System.out.println("output " + receive_output);
+
+			switch (receive_output) {
+				case 1:
+					System.out.println("LIST_CONTENT FAIL, USER DOES NOT EXIST");
+					return 0;
+				case 2:
+					System.out.println("LIST_CONTENT FAIL, USER NOT CONNECTED");
+					return 0;
+				case 3:
+					System.out.println("LIST_CONTENT FAIL, REMOTE USER DOES NOT EXIST");
+					return 0;
+				case 4:
+					System.out.println("LIST_CONTENT FAIL");
+					return 0;
+			}
+			int number_files = receive_Stream.readInt();
+			
+
+			BufferedReader receive_files = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			System.out.println("LIST_CONTENT OK");
+			for (int ii = 0; ii < number_files; ii++) {
+				System.out.println(receive_files.readLine());
+			}
+	
+			receive_files.close();
+			send_stream.close();
+			receive_Stream.close();
+			socket.close();
+
+		} catch (Exception e) {
+			System.out.println("LIST_CONTENT FAIL");
+			System.err.println("Exception "+ e.toString());
+			e.printStackTrace();
+			
+		}  
 		return 0;
 	}
 
@@ -385,7 +536,7 @@ class client {
 
 				if (line.length > 0) {
 					/*********** REGISTER *************/
-					if (line[0].equals("REGISTER")) {
+					if (line[0].toUpperCase().equals("REGISTER")) {
 						if  (line.length == 2) {
 							register(line[1]); // userName = line[1]
 						} else {
@@ -394,7 +545,7 @@ class client {
 					} 
 					
 					/********** UNREGISTER ************/
-					else if (line[0].equals("UNREGISTER")) {
+					else if (line[0].toUpperCase().equals("UNREGISTER")) {
 						if  (line.length == 2) {
 							unregister(line[1]); // userName = line[1]
 						} else {
@@ -403,7 +554,7 @@ class client {
                     			} 
                     			
                     			/************ CONNECT *************/
-                    			else if (line[0].equals("CONNECT")) {
+                    			else if (line[0].toUpperCase().equals("CONNECT")) {
 						if  (line.length == 2) {
 							connect(line[1]); // userName = line[1]
 						} else {
@@ -412,7 +563,7 @@ class client {
                     			} 
                     
                     			/********** DISCONNECT ************/
-                    			else if (line[0].equals("DISCONNECT")) {
+                    			else if (line[0].toUpperCase().equals("DISCONNECT")) {
 						if  (line.length == 2) {
 							disconnect(line[1]); // userName = line[1]
 						} else {
@@ -421,29 +572,29 @@ class client {
                     			} 
                     
                     			/************** PUBLISH **************/
-                    			else if (line[0].equals("PUBLISH")) {
-						if  (line.length >= 3) {
+                    			else if (line[0].toUpperCase().equals("PUBLISH")) {
+						if  (line.length >= 4) {
 							// Remove first two words
 							//String description = input.substring(input.indexOf(' ')+1).substring(input.indexOf(' ')+1);
-							String description = input.substring(input.indexOf(' ')+1);
+							String description = input.substring(input.indexOf(' ')+3);
 							description = description.substring(description.indexOf(' ')+1);
-							publish(line[1], description); // file_name = line[1]
+							publish(line[1],line[2], description); // file_name = line[2]
 						} else {
-							System.out.println("Syntax error. Usage: PUBLISH <file_name> <description>");
+							System.out.println("Syntax error. Usage: PUBLISH <userName> <file_name> <description>");
                     				}
                     			} 
 
                     			/************ DELETE *************/
-                    			else if (line[0].equals("DELETE")) {
-						if  (line.length == 2) {
-							delete(line[1]); // userName = line[1]
+                    			else if (line[0].toUpperCase().equals("DELETE")) {
+						if  (line.length == 3) {
+							delete(line[1],line[2]); // userName = line[1]
 						} else {
-							System.out.println("Syntax error. Usage: DELETE <file name>");
+							System.out.println("Syntax error. Usage: DELETE <userName> <file name>");
                     				}
                     			} 
                     
                     			/************** LIST_USERS **************/
-                    			else if (line[0].equals("LIST_USERS")) {
+                    			else if (line[0].toUpperCase().equals("LIST_USERS")) {
 						if  (line.length == 1) {
 							// Remove first two words
 							list_users(); 
@@ -453,7 +604,7 @@ class client {
                     			} 
                     
                     			/************ LIST_CONTENT *************/
-                    			else if (line[0].equals("LIST_CONTENT")) {
+                    			else if (line[0].toUpperCase().equals("LIST_CONTENT")) {
 						if  (line.length == 2) {
 							list_content(line[1]); // userName = line[1]
 						} else {
@@ -462,7 +613,7 @@ class client {
                     			} 
                     
                     			/************** GET_FILE **************/
-                    			else if (line[0].equals("GET_FILE")) {
+                    			else if (line[0].toUpperCase().equals("GET_FILE")) {
 						if  (line.length == 4) {
 							get_file(line[1], line[2], line[3]); 
 						} else {
@@ -472,7 +623,7 @@ class client {
 
                     
                     			/************** QUIT **************/
-                    			else if (line[0].equals("QUIT")){
+                    			else if (line[0].toUpperCase().equals("QUIT")){
 						if (line.length == 1) {
 							exit = true;
 						} else {
@@ -555,7 +706,9 @@ class client {
 		// Write code here
 		
 		shell();
-		server_exit.set(false);
+		if(server_Thread != null){
+			server_Thread.closeConnectionAuto(_server,_port,_user);
+		}
 		System.out.println("+++ FINISHED +++");
 	}
 }

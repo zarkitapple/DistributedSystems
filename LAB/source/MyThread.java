@@ -1,49 +1,76 @@
 package source;
+
 import java.net.Socket;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.net.ServerSocket;
 import java.io.*;
+
 /**
  * MyThread
  */
-public class MyThread extends Thread{
+public class MyThread extends Thread {
     private ServerSocket server_socket;
-    private AtomicBoolean exit_flag;
 
-    MyThread( ServerSocket sc,AtomicBoolean flag){
+
+    MyThread(ServerSocket sc) {
         server_socket = sc;
-        exit_flag = flag;
     }
-    
+    public void closeConnectionManually () {
+        try {
+            server_socket.close();
+        } catch (Exception e) {
+            System.err.println(e.toString());
+        }
+       
+    }
+    public void closeConnectionAuto (String server, int port, byte [] user) {
+        try {
+            Socket socket = new Socket(server,port);
+			
+			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
+			DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());
+
+
+			send_stream.write(("DISCONNECT"+'\0').getBytes());
+			send_stream.flush();
+
+			send_stream.write(user);
+            send_stream.flush();
+            
+            int receive_output = receive_Stream.readInt();
+ 
+            send_stream.close();
+			receive_Stream.close();
+            socket.close();
+            
+            server_socket.close();
+        } catch (Exception e) {
+            System.err.println(e.toString());
+
+        }
+       
+    }
     public void run() {
         Socket socket;
         DataInputStream receive_Stream;
         DataOutputStream send_stream;
-            System.out.println("Inside thread");
-            while(exit_flag.get()){
-                try {
-                    server_socket.setSoTimeout(1);
-                    //System.out.println("BEFORE ACCEPT");
-                    socket = server_socket.accept();
-                    //System.out.println("AFTER ACCEPT");
-                    /* Needs to be made multithreade */
-                    if(socket!=null){
-                        socket = server_socket.accept();
-                        System.out.println("Inside thread");
-                        receive_Stream = new DataInputStream(socket.getInputStream());
-                        System.out.println("Inside thread");
-                        send_stream = new DataOutputStream(socket.getOutputStream());
-                        System.out.println("Inside thread");
-            
-                        receive_Stream.close();
-			            send_stream.close();
-			            socket.close();
-                    }
-                } catch (Exception e) {
-                    //System.out.println("Inside execption");
-                }
-                
-            }
-            
+
+
+        try {
+            /* Needs to be made multithreade */
+                socket = server_socket.accept();
+                System.out.println("Inside thread 2 ");
+                receive_Stream = new DataInputStream(socket.getInputStream());
+                System.out.println("Inside thread");
+                send_stream = new DataOutputStream(socket.getOutputStream());
+                System.out.println("Inside thread");
+
+                receive_Stream.close();
+                send_stream.close();
+                socket.close();
+
+        } catch (Exception e) {
+            System.err.println(e.toString());
+        }
+
     }
 }
