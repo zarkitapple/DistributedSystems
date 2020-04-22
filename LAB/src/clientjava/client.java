@@ -8,7 +8,9 @@ import java.lang.reflect.Array;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.concurrent.*;
+
 
 import gnu.getopt.Getopt;
 
@@ -23,7 +25,8 @@ class client {
 	private static byte [] _user = null;
 	private static boolean connected = false;
 	private static MyThread server_Thread = null;
-	private static ConcurrentHashMap<String, UsersData> users_data;
+	private static ConcurrentHashMap<String, UsersData> users_data = new ConcurrentHashMap<String, UsersData>();
+	private static String file_path = "./UserFiles/";  
 
 	enum COMMANDS {
 		REGISTER,
@@ -33,7 +36,8 @@ class client {
 		PUBLISH,
 		DELETE,
 		LIST_USERS,
-		LIST_CONTENT
+		LIST_CONTENT,
+		GET_FILE
 	}
 	
 	/********************* METHODS ********************/
@@ -449,12 +453,10 @@ class client {
 			System.out.println("LIST_USERS OK");
 			for (int ii = 0; ii < number_users; ii++) {
 				for(int jj = 0; jj< 3 ; jj++){
-					data[jj] = receive_data.readLine();
+					data[jj] = receive_data.readLine().trim();
 				}
 				users_data.put(data[0], new UsersData(data[1],data[2]));
-				System.out.println("     " + data[0]);
-				System.out.println("     " + data[1]);
-				System.out.println("     " + data[2]);
+				System.out.println("     " + data[0] + "  " + data[1] + "  " + data[2]);
 			}
 			receive_data.close();
 			send_stream.close();
@@ -541,14 +543,67 @@ class client {
 	 */
 	static int get_file(String user_name, String remote_file_name, String local_file_name)
 	{
-		// Write your code here
+		
 		try {
 			
-		} catch (Exception e) {
-			//TODO: handle exception
-		}
+			UsersData remote_Data = users_data.get(user_name);
+			if (remote_Data == null) {
+				System.out.println("GET_FILE FAIL");
+				return 0;
+			}
 
-		System.out.println("GET_FILE " + user_name + " "  + remote_file_name + " " + local_file_name);
+			Socket socket = new Socket(remote_Data.getIp(),Integer.parseInt(remote_Data.getPort()));
+
+			BufferedWriter send_stream = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+
+
+			System.out.println(COMMANDS.GET_FILE.toString());
+
+			send_stream.write(COMMANDS.GET_FILE.toString());
+			send_stream.newLine();
+			send_stream.flush();
+
+			send_stream.write(remote_file_name);
+			send_stream.newLine();
+			send_stream.flush();
+
+			DataInputStream receive_output = new DataInputStream(socket.getInputStream());
+			int response = receive_output.readInt();
+			switch(response){
+				case 1:
+					System.out.println("GET_FILE FAIL / FILE DOES NOT EXIST");
+					socket.close();
+					return 0;
+				case 2:
+					System.out.println("GET_FILE FAIL");
+					socket.close();
+					return 0;
+			}
+			String file_name = file_path.concat(local_file_name);
+			File file = new File(file_name);
+
+			file.createNewFile();
+			BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(file_name));
+			String line;
+
+			while((line = bufferedReader.readLine()) != null){
+				bufferedWriter.write(line);
+				send_stream.newLine();
+				bufferedWriter.flush();
+			}
+
+			System.out.println("GET_FILE OK");
+
+			bufferedWriter.close();
+			socket.close();
+
+
+		
+		} catch (Exception e) {
+			System.err.println(e.toString());
+			e.printStackTrace();
+		}
 		return 0;
 	}
 
@@ -738,11 +793,9 @@ class client {
 			return;
 		}
 		
-		users_data = new ConcurrentHashMap<>();
-		
 		shell();
 		if(server_Thread != null){
-			server_Thread.closeConnectionAuto(_server,_port,_user);
+			server_Thread.closeConnectionAuto(_server,_port);
 		}
 		System.out.println("+++ FINISHED +++");
 	}

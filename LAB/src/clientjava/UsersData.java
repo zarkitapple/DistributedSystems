@@ -8,4 +8,12 @@ public class UsersData {
         this.ip = ip;
         this.port = port;
     }
+
+    public String getPort (){
+        return port;
+    }
+
+    public String getIp () {
+        return ip;
+    }
 }

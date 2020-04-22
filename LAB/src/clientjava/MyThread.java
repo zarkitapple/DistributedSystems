@@ -1,6 +1,5 @@
 package src.clientjava;
 
-import src.clientjava.UsersData;
 import java.net.Socket;
 import java.util.concurrent.ConcurrentHashMap;
 import java.net.ServerSocket;
@@ -13,7 +12,7 @@ public class MyThread extends Thread {
 
 
     public class ManageRequest extends Thread {
-        private final String files_path = "./UserFiles";
+        private final String files_path = "./UserSharedFiles/";
         private final String get_file = "GET_FILE";
         private Socket socket;
 
@@ -22,14 +21,14 @@ public class MyThread extends Thread {
         }
         public void run() {
             try {
-
                 BufferedReader receive_data = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
                 String operation = receive_data.readLine();
-
                 String file_path = null;
-                int output;
 
+                int output;
                 if(operation.equals(get_file)){
+
                     String file_name = receive_data.readLine();
 
                     file_path = files_path.concat(file_name);
@@ -37,15 +36,17 @@ public class MyThread extends Thread {
                     if(file.exists()){
                         output =  0;
                     }
-                    output = 1;
+                    else {
+                        output = 1;
+                    }
                 }
                 else {
                     output = 2;
                 }
-
+            
                 DataOutputStream response = new DataOutputStream(socket.getOutputStream());
                 response.writeInt(output);
-
+            
                 if(output == 0){
                     
                     BufferedReader bufferedReader = new BufferedReader(new FileReader(file_path));
@@ -53,13 +54,15 @@ public class MyThread extends Thread {
                     String line;
 
                     while((line = bufferedReader.readLine()) != null){
+                        
                         bufferedWriter.write(line);
                         bufferedWriter.flush();
                     }
+                   
                     bufferedReader.close();
                     bufferedWriter.close();
                 }
-
+                
                 receive_data.close();
                 response.close();
 
@@ -123,6 +126,7 @@ public class MyThread extends Thread {
             Socket socket = server_socket.accept();
 
             new ManageRequest(socket).start();
+
 
         } catch (Exception e) {
             System.err.println(e.toString());
