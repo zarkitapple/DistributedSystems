@@ -1,4 +1,3 @@
 #!/bin/sh
-make clean
-make 
-./server -p 6200
+gcc -Wall -g lib/lines.c lib/LinkedList.c src/serverc/server.c -lpthread -o bin/serverC/server
+./bin/serverC/server -p 5000

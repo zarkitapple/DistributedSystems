@@ -1,7 +1,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include "lines.h"
-
 int send_msg(int socket, char *mensaje, int longitud)
 {
 	int r;

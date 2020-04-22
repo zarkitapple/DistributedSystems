@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <netinet/in.h>
-#include "lines.h"
-#include "LinkedList.h"
+#include "../../lib/lines.h"
+#include "../../lib/LinkedList.h"
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -422,77 +422,59 @@ int isusr_connected(int socket,char * user_name){
 	return 0;
 }
 void list_users (int socket){
-	int list_size = list_get_size(connected_users);
 	char * user_name = (char *) malloc(MAX_SIZE * sizeof(char));
 	int user_connected = isusr_connected(socket,user_name);
-	int user_registered;
 	UserServer * users = NULL;
-	char ** users_data = NULL;
-	size_t * users_data_length = NULL;
 	int output;
-	switch (user_connected)
-	{
-	case 1:
-		user_registered = isusr_registered(user_name);
+
+	if(user_connected){
+		int user_registered = isusr_registered(user_name);
 		if(user_registered){
 			users = get_elements(connected_users);
 			if(users == NULL){
 				output = 3;
-				break;
 			}
-			users_data = malloc(list_size * sizeof(char *));
-			if(users_data == NULL){
-				output = 3;
-				break;
+			else{
+				output = 0;
 			}
-			users_data_length = malloc( list_size * sizeof(size_t));
-			if(users_data_length == NULL){
-				output = 3;
-				break;
-			}
-			for(int ii = 0; ii<list_size ; ii++){
-				size_t data_length = strlen(users[ii].name) + strlen(users[ii].port) + strlen(users[ii].ip_address) + 3;
-				users_data_length[ii] = data_length;
-				users_data[ii] = (char *)malloc(data_length * sizeof(char));
-				if(users_data[ii] == NULL){
-					output = 3;
-					break;
-				}
-				sprintf(users_data[ii],"%s %s %s",users[ii].name,users[ii].ip_address,users[ii].port);
-			}
-			output = 0;
-			break;
 		}
-		output = 1;
-		break;
-	default:
+		else {
+			output = 1;
+		}
+	}
+	else {
 		output = 2;
 	}
 	int	response = htonl(output);
 	if(send(socket,(int *)&response,sizeof(int),0)==-1){
 		perror("Error when sending data");
 	}
-	else if(output == 0){
-		response = htonl(list_size);
+	else if (output == 0){
+
+		int number_users = list_get_size(connected_users);
+		response = htonl(number_users);
+
 		if(send(socket,(int *)&response,sizeof(int),0)==-1){
 			perror("Error when sending data");
 		}
 		else {
-			for(int ii = 0; ii<list_size ; ii++){
-				if(writeLine(socket,users_data[ii],users_data_length[ii])==-1){
+			for (int ii = 0; ii < number_users; ii++){
+			if(writeLine(socket,users[ii].name,strlen(users[ii].name)+1)==-1){
 					perror("Error when sending data");
-				}
+			}
+			if(writeLine(socket,users[ii].ip_address,strlen(users[ii].ip_address)+1)==-1){
+					perror("Error when sending data");
+			}
+			if(writeLine(socket,users[ii].port,strlen(users[ii].port)+1)==-1){
+					perror("Error when sending data");
+			}
 			}
 		}
 	}
 	free(user_name);
-	free(users);
-	free(users_data_length);
-	for(int ii = 0; ii<list_size ; ii++){
-		free(users_data[ii]);
-	}
-	free(users_data);	
+	free(users);	
 	close(socket);
+
 	pthread_exit(0);
 }
 
@@ -506,121 +488,79 @@ void list_content (int socket){
 	}
 	char * userop_name = (char *) malloc(MAX_SIZE * sizeof(char));
 	int user_connected = isusr_connected(socket,userop_name);
-	int user_registered;
-	int remote_registered;
-	int user_remote_files = 0;
+
+	DIR * directory;
+	struct dirent * d_entry;
+	size_t dir_path_size = user_name_length + 2 + strlen(USERS_DIRECTORY) + 1;
+	char dir_path [dir_path_size];
+	sprintf(dir_path,"%s/%s/",USERS_DIRECTORY,user_name);
+
+	int number_files = 0;
 	int output;
-	size_t * users_data_length = NULL;
-	char ** users_data = NULL;
-	switch (user_connected)
-	{
-	case 1:
-		user_registered = isusr_registered(userop_name);
-		if (user_registered){
-			remote_registered = isusr_registered(user_name);
-			if(remote_registered){
-				DIR * directory;
-				struct dirent * d_entry;
-				size_t dir_path_size = user_name_length + 2 + strlen(USERS_DIRECTORY) + 1;
-				char * dir_path = (char *)malloc(dir_path_size * sizeof(char));
-				if(dir_path == NULL){
-					output = 4;
-					break;
-				}
-				/* ./UsersDirectory/username/ */
-				sprintf(dir_path,"%s/%s/",USERS_DIRECTORY,user_name);
 
-				if((directory= opendir(dir_path))==NULL){
-					perror("Error when opening users directory");
-					free(dir_path);
-					closedir(directory);
-					output = 4;
-					break;
-				}
-				while ((d_entry = readdir(directory))){
-						if(!strcmp(d_entry->d_name, ".") || !strcmp(d_entry->d_name, "..")) {
-							continue;
-          				}
-						user_remote_files++;
-								
-				}
+	if(user_connected){
+		int user_registered = isusr_registered(userop_name);
+		if(user_registered){
+			if((directory= opendir(dir_path))==NULL){
+				perror("Error when opening users directory");
 				closedir(directory);
-				if((directory= opendir(dir_path))==NULL){
-					perror("Error when opening users directory");
-					free(dir_path);
-					closedir(directory);
-					output = 4;
-					break;
-				}
-				users_data_length = malloc( user_remote_files* sizeof(size_t));
-				if(users_data_length == NULL){
-					output = 4;
-					break;
-				}
-
-				users_data = malloc(user_remote_files * sizeof(char *));
-				if(users_data == NULL){
-					output = 4;
-					break;
-				}
-
-				int ii = 0;
-				while ((d_entry = readdir(directory))){
-						if(!strcmp(d_entry->d_name, ".") || !strcmp(d_entry->d_name, "..")) {
-							continue;
-          				}
-						size_t data_length = strlen(d_entry->d_name)+1;
-						users_data_length[ii] = data_length;
-						users_data[ii] = (char *)malloc(data_length * sizeof(char));
-						if(users_data[ii] == NULL){
-							output = 4;
-							break;
-						}
-						sprintf(users_data[ii],"%s",d_entry->d_name);
-						ii++;
-								
-				}
-				free(dir_path);
-				closedir(directory);
-				output = 0;
-				break;
+				output = 4;
 			}
-			output = 3;
-			break;
+			else {
+				int remote_registered = isusr_registered(user_name);
+				if(remote_registered){
+					while ((d_entry = readdir(directory))){
+						if(!strcmp(d_entry->d_name, ".") || !strcmp(d_entry->d_name, "..")) {
+							continue;
+          				}
+						number_files++;		
+					}
+					rewinddir(directory);
+					output = 0;
+				}
+				else {
+					output = 3;
+				}	
+			}
 		}
-		output = 1;
-		break;
-	
-	default:
-		output = 2;
-		break;
+		else {
+			output = 1;
+		}
 	}
-	int response = htonl(output);
+	else {
+		output = 2;
+	}
+
+	int	response = htonl(output);
 	if(send(socket,(int *)&response,sizeof(int),0)==-1){
 		perror("Error when sending data");
 	}
-	else if(output == 0){
-		response = htonl(user_remote_files);
+	else if (output == 0){
+
+		response = htonl(number_files);
+
 		if(send(socket,(int *)&response,sizeof(int),0)==-1){
 			perror("Error when sending data");
 		}
 		else {
-			for (int ii = 0; ii < user_remote_files; ii++){
-				if(writeLine(socket,users_data[ii],users_data_length[ii])==-1){
+			while ((d_entry = readdir(directory))){
+				if(!strcmp(d_entry->d_name, ".") || !strcmp(d_entry->d_name, "..")) {
+					continue;
+          		}
+				size_t data_length = strlen(d_entry->d_name)+1;
+				char user_file_name [data_length];
+				sprintf(user_file_name,"%s",d_entry->d_name);
+
+				if(writeLine(socket,user_file_name,data_length)==-1){
 					perror("Error when sending data");
 				}
 			}
 		}
-
-		
 	}
 	free(userop_name);
-	free(users_data_length);
-	for(int ii = 0; ii<user_remote_files; ii++){
-		free(users_data[ii]);
-	}
-	free(users_data);
+	closedir(directory);
 	close(socket);
+
 	pthread_exit(0);
 }
 

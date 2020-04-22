@@ -1,8 +1,14 @@
-package source;
+package src.clientjava;
+
+import src.clientjava.touppercase.ToUpperCaseServiceService;
+import src.clientjava.touppercase.ToUpperCaseService;
+import src.clientjava.UsersData;
 import java.io.*;
+import java.lang.reflect.Array;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Arrays;
+import java.util.concurrent.*;
 
 import gnu.getopt.Getopt;
 
@@ -15,7 +21,10 @@ class client {
 	private static int _port = -1;
 	private static final int message_size = 256;
 	private static byte [] _user = null;
-	private static MyThread server_Thread;
+	private static boolean connected = false;
+	private static MyThread server_Thread = null;
+	private static ConcurrentHashMap<String, UsersData> users_data;
+
 	enum COMMANDS {
 		REGISTER,
 		UNREGISTER,
@@ -157,15 +166,20 @@ class client {
 	 */
 	static int connect(String user) 
 	{
-		
+		if(connected){
+			System.out.println("CONNECT FAIL, USER ALREADY CONNECTED");
+			return 0;
+		}
 		byte [] user_name = parse_string(user);
 		byte [] command = parse_command(COMMANDS.CONNECT.toString());
 		try {
-			_user = user_name;
+
 			ServerSocket server_socket = new ServerSocket(0);
 			int server_port = server_socket.getLocalPort();
-			server_Thread = new MyThread(server_socket);
+
+			server_Thread = new MyThread(server_socket,user_name,users_data);
 			server_Thread.start();
+
 			Socket socket = new Socket(_server,_port);
 			
 			DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
@@ -277,10 +291,18 @@ class client {
 		System.out.println("User     "+user);
 		System.out.println("file    "+file_name);
 		System.out.println("des   "+description);
+
+		ToUpperCaseServiceService service = new ToUpperCaseServiceService();
+		ToUpperCaseService port = service.getToUpperCaseServicePort();
+
+		String descriptio_capital = port.toUppercase(description);
+
+		System.out.println("To capital" + descriptio_capital);
+
 		byte [] command = parse_command(COMMANDS.PUBLISH.toString());
 		byte [] user_name = parse_string(user);
 		byte [] file = parse_string(file_name);
-		byte [] description_parsed = parse_string(description);
+		byte [] description_parsed = parse_string(descriptio_capital);
 		try {
 			Socket socket = new Socket(_server,_port);
 
@@ -402,7 +424,6 @@ class client {
 
 			send_stream.write(command);
 			send_stream.flush();
-
 		
 			int receive_output = receive_Stream.readInt();
 			System.out.println("output " + receive_output);
@@ -410,24 +431,32 @@ class client {
 			switch (receive_output) {
 				case 1:
 					System.out.println("LIST_USERS FAIL, USER DOES NOT EXIST");
+					socket.close();
 					return 0;
 				case 2:
 					System.out.println("LIST_USERS FAIL, USER NOT CONNECTED");
+					socket.close();
 					return 0;
 				case 3:
 					System.out.println("LIST_USERS FAIL");
+					socket.close();
 					return 0;
 			}
-			
-			int number_users = receive_Stream.readInt();
 
-			BufferedReader receive_users = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			int number_users = receive_Stream.readInt();
+			String [] data = new String [3];
+			BufferedReader receive_data = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			System.out.println("LIST_USERS OK");
 			for (int ii = 0; ii < number_users; ii++) {
-				System.out.println(receive_users.readLine());
+				for(int jj = 0; jj< 3 ; jj++){
+					data[jj] = receive_data.readLine();
+				}
+				users_data.put(data[0], new UsersData(data[1],data[2]));
+				System.out.println("     " + data[0]);
+				System.out.println("     " + data[1]);
+				System.out.println("     " + data[2]);
 			}
-			
-			receive_users.close();
+			receive_data.close();
 			send_stream.close();
 			receive_Stream.close();
 			socket.close();
@@ -513,6 +542,12 @@ class client {
 	static int get_file(String user_name, String remote_file_name, String local_file_name)
 	{
 		// Write your code here
+		try {
+			
+		} catch (Exception e) {
+			//TODO: handle exception
+		}
+
 		System.out.println("GET_FILE " + user_name + " "  + remote_file_name + " " + local_file_name);
 		return 0;
 	}
@@ -703,7 +738,7 @@ class client {
 			return;
 		}
 		
-		// Write code here
+		users_data = new ConcurrentHashMap<>();
 		
 		shell();
 		if(server_Thread != null){
