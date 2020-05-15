@@ -18,13 +18,20 @@ class client {
 	
 	private static String _server = null;
 	private static int _port = -1;
+	/* Maximum message size*/
 	private static final int message_size = 256;
+	/* Variable to check ff the calling user is connected*/
 	private static boolean connected = false;
+	/* Reference to the client-server thread */
 	private static ServerThread server_Thread = null;
+	/* Variable to hold the name of the calling connected user*/
 	private static String connected_user_name = null;
-	private static HashMap <String, UsersData > users_data = null; 
+	/* Hash map used to store the ip and port of the connected users to the server*/
+	private static HashMap <String, UsersData > users_data = null;
+	/* Path where the user files from get_file will be stored */ 
 	private static String file_path = "./UserFiles/";  
 
+	/* Command enum of different commands sent to the server */
 	enum COMMANDS {
 		REGISTER,
 		UNREGISTER,
@@ -41,6 +48,7 @@ class client {
 
 	/**
 	 * Transform a string to a byte array and add the end of string character
+	 * if the string is > 255 characters it will be truncated
 	 * @param userString
 	 * @return byte_array of the input string
 	 */
@@ -76,11 +84,13 @@ class client {
 	*/
 	private static int init_client(){
 		
+		/* Create the hash map to store the ip and ports of the user */
 		users_data = new HashMap<String, UsersData>();
-
+		/* Check if the directories have already been created to not overwrite */
 		if(new File("./UserSharedFiles").exists() && new File("./UserFiles").exists()){
 			return 0;
 		}
+		/* If the directories have not been created,create them */
 		if (!(new File ("./UserSharedFiles").mkdirs())){
 			System.err.println("ERROR WHEN CREATING UserShareFiles directory");
 			return -1;
@@ -95,24 +105,27 @@ class client {
 
 	/********************* REQUESTED FUNCTIONALITY ********************/
 	/**
+	 * Registers the user in the system
 	 * @param user - User name to register in the system
-	 * 
-	 * @return ERROR CODE
 	 */
 	static int register(String user) 
 	{	
+		/* Transform the user name and commmand to byte arrays */
 		byte [] user_name = parse_string(user);
 		byte [] command = parse_command(COMMANDS.REGISTER.toString());
-
+		/* Link the socket to connect with the server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(_server,_port);
 				DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 				DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());) 
 		{
+			/* Send command */
 			send_stream.write(command);
 			send_stream.flush();
+			/* Send user name */
 			send_stream.write(user_name);
 			send_stream.flush();
-			
+			/* Receive server response */
 			int receive_output = receive_Stream.readInt();
 
 			switch (receive_output) {
@@ -139,24 +152,27 @@ class client {
 	}
 	
 	/**
-	 * @param user - User name to unregister from the system
-	 * 
-	 * @return ERROR CODE
+	 * Unregister the user from the server 
+	 * @param user - User name to unregister in the server 
 	 */
 	static int unregister(String user) 
 	{
+		/* Transform the user name and commmand to byte arrays */
 		byte [] user_name = parse_string(user);
 		byte [] command = parse_command(COMMANDS.UNREGISTER.toString());
-		
+		/* Link the socket to connect with the server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(_server,_port);
 				DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 				DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());) 
 		{
+			/* Send the command */
 			send_stream.write(command);
 			send_stream.flush();
+			/* Send the user name */
 			send_stream.write(user_name);
 			send_stream.flush();
-
+			/* Receive server response */
 			int receive_output = receive_Stream.readInt();
 
 			switch (receive_output) {
@@ -183,12 +199,13 @@ class client {
 	}
 	
     /**
+	 * Connects the calling user to the server
 	 * @param user - User name to connect to the system
-	 * 
-	 * @return ERROR CODE
 	 */
 	static int connect(String user) 
 	{
+
+		/* Check if the user is connected already */
 		if(connected){
 			System.err.println("CONNECT FAIL, USER ALREADY CONNECTED");
 			return 0;
@@ -196,50 +213,58 @@ class client {
 		byte [] user_name = parse_string(user);
 		byte [] command = parse_command(COMMANDS.CONNECT.toString());
 		int receive_output = 3;
-
+		/* Link the socket to connect with the server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(_server,_port);
 				DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 				DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());) 
 		{
+			/* Create the client-server thread with random port and start the thread */
 			ServerSocket server_socket = new ServerSocket(0);
 			int server_port = server_socket.getLocalPort();
-
+			
 			server_Thread = new ServerThread(server_socket,user_name);
 			server_Thread.start();
 
+			/* Send command */
 			send_stream.write(command);
 			send_stream.flush();
 
+			/* Send name of user requesting the operation */
 			send_stream.write(user_name);
 			send_stream.flush();
-
 			String port = Integer.toString(server_port) +"\0";
 			send_stream.write(port.getBytes());
 			send_stream.flush();
 
+			/* Recieve the server output */
 			receive_output = receive_Stream.readInt();
 
 			switch (receive_output) {
 				case 1:
 					System.err.println("CONNECT FAIL, USER DOES NOT EXIST");
+					/* An error occurred, close the client-server thread */
 					server_Thread.closeConnection();
 					server_Thread.join();
 					server_Thread = null;
 					break;
 				case 2:
 					System.err.println("CONNECT FAIL, USER ALREADY CONNECTED");
+					/* An error occurred, close the client-server thread */
 					server_Thread.closeConnection();
 					server_Thread.join();
 					server_Thread = null;
 					break;
 				case 3:
 					System.err.println("CONNECT FAIL");
+					/* An error occurred, close the client-server thread */
 					server_Thread.closeConnection();
 					server_Thread.join();
 					server_Thread = null;
 					break;
 				default:
 					System.out.println("CONNECT OK");
+					/* Success set connected to true and the user name */
 					connected = true;
 					connected_user_name = user;
 			}
@@ -257,6 +282,7 @@ class client {
 		} catch (IllegalThreadStateException e ){
 			System.err.println("CONNECT FAIL" + e.toString());
 		} finally {
+			/* If any exeception occurred then close the client-server thread */
 			if(receive_output!=0){
 				if(server_Thread != null){
 					server_Thread.closeConnection();
@@ -273,33 +299,39 @@ class client {
 	}
 	
 	 /**
-	 * @param user - User name to disconnect from the system
+	 * Discconects the calling user from the server 
 	 * 
-	 * @return ERROR CODE
+	 * @param user - User name to disconnect from the system
 	 */
 	static int disconnect(String user) 
 	{
-		
+		/* Check if the user is connected */
 		if(!connected){
 			System.err.println("DISCONNECT FAIL / USER NOT CONNECTED");
 			return 0;
 		}
+		/* Check if the input user name is the same as the connected user name
+			to avoid disconnects of different users*/
 		if(!user.equals(connected_user_name)){
 			System.err.println("DISCONNECT FAIL");
 			return 0;
 		}
+		/* Transform the user name and command to byte arrays*/
 		byte [] user_name = parse_string(user);
 		byte [] command = parse_command(COMMANDS.DISCONNECT.toString());
-
+		/* Link the socket to connect with the server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(_server,_port);
 				DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 				DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());) 
 		{
+			/* Send command */
 			send_stream.write(command);
 			send_stream.flush();
+			/* Send user name */
 			send_stream.write(user_name);
 			send_stream.flush();
-
+			/* receive output from server*/
 			int receive_output = receive_Stream.readInt();
 
 			switch (receive_output) {
@@ -316,7 +348,6 @@ class client {
 					System.out.println("DISCONNECT OK");
 			}
 
-
 		} catch (UnknownHostException e) {
 			System.err.println("DISCONNECT FAIL" + e.toString());
 		} catch (EOFException e) {
@@ -326,6 +357,7 @@ class client {
 		} catch (SecurityException e){
 			System.err.println("DISCONNECT FAIL" + e.toString());
 		} finally {
+			/* If succesful disconnect, close the client-server thread*/
 			server_Thread.closeConnection();
 			try {
 				server_Thread.join();
@@ -333,48 +365,58 @@ class client {
 			} catch (InterruptedException e){
 				System.err.println(e.toString());
 			}
+			/* Set connected to false */
 			connected = false;
+			connected_user_name = null;
 		}
 		return 0;
 	}
 
 	 /**
+	 * Allows the user to create a new file in his directory
+	 * @param user - user name
 	 * @param file_name    - file name
 	 * @param description - descrition
-	 * 
-	 * @return ERROR CODE
 	 */
 	static int publish(String user ,String file_name, String description) 
 	{
+		/* Request to the webservice ToUpperCase method */
 		ToUpperCaseServiceService service = new ToUpperCaseServiceService();
 		ToUpperCaseService port = service.getToUpperCaseServicePort();
-
+		/* Receive from the webservice the description in upper case */
 		String description_capital = port.toUppercase(description);
 
-		
+		/* Transform the command,user_name,file and description to byte arrays*/
 		byte [] command = parse_command(COMMANDS.PUBLISH.toString());
 		byte [] user_name = parse_string(user);
 		byte [] file = parse_string(file_name);
 		byte [] description_parsed = parse_string(description_capital);
-
+	
+		/* Link the socket to connect with the server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(_server,_port);
 				DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 				DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());) 
 		{
+			/* Send command */
 			send_stream.write(command);
 			send_stream.flush();
 
+			/* Send name of user performing the operation */
 			send_stream.write(user_name);
 			send_stream.flush();
 
+			/* Send file name */
 			send_stream.write(file);
 			send_stream.flush();
 
+			/* Send file descpription */
 			send_stream.write(description_parsed);
 			send_stream.flush();
 
+			/* Recieve the server response */
 			int receive_output = receive_Stream.readInt();
-
+			
 			switch (receive_output) {
 				case 1:
 					System.err.println("PUBLISH FAIL, USER NOT REGISTERED");
@@ -404,33 +446,39 @@ class client {
 	}
 
 	 /**
-	 * @param file_name    - file name
+	 * Allows the user to delete a file from his directory specifying the name
 	 * 
-	 * @return ERROR CODE
+	 * @param file_name    - file name
 	 */
 	static int delete(String file_name)
 	{
+		/* Check if the user is connected */
 		if(!connected){
 			System.err.println("DELETE FAIL, USER NOT CONNECTED");
 			return 0;
 		}
+		/* Transform the command, user name and file name to byte arrays*/
 		byte [] command = parse_command(COMMANDS.DELETE.toString());
 		byte [] user_name = parse_string(connected_user_name);
 		byte [] file = parse_string(file_name);
 
+		/* Link the socket to connect with the server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(_server,_port);
 				DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 				DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());) 
 		{
+			/* Send command */
 			send_stream.write(command);
 			send_stream.flush();
-
+			/* Send name of user performing the operation */
 			send_stream.write(user_name);
 			send_stream.flush();
-
+			/* Send name of the file */
 			send_stream.write(file);
 			send_stream.flush();
 
+			/* Receive the output from server */
 			int receive_output = receive_Stream.readInt();
 		
 			switch (receive_output) {
@@ -457,26 +505,33 @@ class client {
 	}
 
 	 /**
-	 * @return ERROR CODE
+	 * List all the currently connected users
 	 */
 	static int list_users()
 	{
+		/* Check the user calling is connected to the server */
 		if(!connected){
 			System.err.println("LIST_USERS FAIL / USER NOT CONNECTED");
 			return 0;
 		}
+		/* Transform the command  and user name to byte arrays*/
 		byte [] command = parse_command(COMMANDS.LIST_USERS.toString());
 		byte [] user_name = parse_string(connected_user_name);
 		
+		/* Link the socket to connect with the server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(_server,_port);
 				DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 				DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());) 
 		{
+			/* Send commmand */
 			send_stream.write(command);
 			send_stream.flush();
+			/* Send name of the user performing the operation */
 			send_stream.write(user_name);
 			send_stream.flush();
 		
+			/* Recieve the server response */
 			int receive_output = receive_Stream.readInt();
 
 			switch (receive_output) {
@@ -485,8 +540,10 @@ class client {
 					break;
 			}
 
+			/* Response is success */
 			if(receive_output == 0){
 				
+				/* Try-resources */
 				try (BufferedReader receive_data = new BufferedReader(new InputStreamReader(socket.getInputStream())))
 				{
 					int number_users = receive_Stream.readInt();
@@ -494,10 +551,12 @@ class client {
 					
 					System.out.println("LIST_USERS OK");
 					
+					/* For each user recieved print the recieved data */
 					for (int ii = 0; ii < number_users; ii++) {
 						for(int jj = 0; jj< 3 ; jj++){
 							data[jj] = receive_data.readLine().trim();
 						}
+						/* Add to the hash map the received users data*/
 						users_data.put(data[0], new UsersData(data[1],data[2]));
 						System.out.println("     " + data[0] + "  " + data[1] + "  " + data[2]);
 					}
@@ -521,29 +580,40 @@ class client {
 	}
 
 	 /**
+	 * Lists the contents of the given user
+	 *
 	 * @param user_name    - user name
 	 */
 	static int list_content(String user_name)
 	{
+		/* Check the user is connected */
 		if(!connected){
 			System.err.println("LIST_CONTENT FAIL / USER NOT CONNECTED");
 			return 0;
 		}
+		
+		/* Transform the command, user_name and, connected user name to byte arrays*/
 		byte [] command = parse_command(COMMANDS.LIST_CONTENT.toString());
 		byte [] name = parse_string(user_name);
 		byte [] userop_name = parse_string(connected_user_name);
-
+		
+		/* Link the socket to connect with the server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(_server,_port);
 				DataOutputStream send_stream = new DataOutputStream(socket.getOutputStream());
 				DataInputStream receive_Stream = new DataInputStream(socket.getInputStream());) 
 		{
+			/* Send commmand */
 			send_stream.write(command);
 			send_stream.flush();
+			/* Send name of the user performing the operation */
 			send_stream.write(userop_name);
 			send_stream.flush();
+			/* Send name of the user whose content we want*/
 			send_stream.write(name);
 			send_stream.flush();
 
+			/* Recieve the server response */
 			int receive_output = receive_Stream.readInt();
 
 			switch (receive_output) {
@@ -554,12 +624,16 @@ class client {
 					System.out.println("LIST_CONTENT FAIL");
 					break;
 			}
+			/* Response is success */
 			if (receive_output == 0){
-
+				
+				/* Try-resources */
 				try (BufferedReader receive_files = new BufferedReader(new InputStreamReader(socket.getInputStream()))) 
 				{
+					/* Receive the number of files from server */
 					int number_files = receive_Stream.readInt();
 
+					/* For each file received output it to the console */
 					System.out.println("LIST_CONTENT OK");
 					for (int ii = 0; ii < number_files; ii++) {
 						System.out.println("     " + receive_files.readLine());
@@ -585,7 +659,8 @@ class client {
 	}
 
 	 /**
-	  * 
+	 * Returns a file with the name provided and from the user provided
+	 * 
 	 * @param user_name    - user name
 	 * @param remote_file_name    - remote file name
 	 * @param local_file_name  - local file name
@@ -593,6 +668,7 @@ class client {
 	static int get_file(String user_name, String remote_file_name, String local_file_name)
 	{
 		
+		/* Check if the specified user exists in the hash map */
 		UsersData remote_Data;
 		try {
 			remote_Data = users_data.get(user_name);
@@ -601,23 +677,27 @@ class client {
 			System.out.println("GET_FILE FAIL");
 			return 0;
 		}
+		/* If the user does not exist return */
 		if(remote_Data == null){
 			System.out.println("GET_FILE FAIL");
 			return 0;
 		}
+		/* Link the socket to connect with the client-server and send the request */
+		/* Try-resources */
 		try (	Socket socket = new Socket(remote_Data.getIp(),Integer.parseInt(remote_Data.getPort()));
 				BufferedWriter send_stream = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 				DataInputStream receive_output = new DataInputStream(socket.getInputStream());) 
 		{
-			
+			/* Send command*/
 			send_stream.write(COMMANDS.GET_FILE.toString());
 			send_stream.newLine();
 			send_stream.flush();
-
+			/* Send the the requested file name */
 			send_stream.write(remote_file_name);
 			send_stream.newLine();
 			send_stream.flush();
-
+			
+			/* Recieve the client-server response */
 			int response = receive_output.readInt();
 
 			switch(response){
@@ -629,17 +709,20 @@ class client {
 					break;
 			}
 			
+			/* No errors */
 			if(response == 0){
 
+				/* Construct the file path */
 				String file_name = file_path.concat(local_file_name);
-
+				/* Try-resources */
 				try (	BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 						BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(file_name));) 
 				{
+					/* Create a local file of file name */
 					File file = new File(file_name);
 					file.createNewFile();
 					String line;
-
+					/* Read the contents of the file */
 					while((line = bufferedReader.readLine()) != null){
 						bufferedWriter.write(line);
 						send_stream.newLine();
@@ -662,7 +745,7 @@ class client {
 		} catch (EOFException e) {
 			System.err.println("GET_FILE FAIL " + e.toString());
 		} catch (IOException e) {
-			/* if the execption is socket closed exception occurs ignore 
+			/* If the execption is socket closed exception occurs ignore 
 				as it will always be thrown when closing BufferedWriter*/
 			if(!e.toString().equals("java.net.SocketException: Socket closed")){
 				System.err.println("GET_FILE FAIL " + e.toString());
@@ -670,13 +753,12 @@ class client {
 		} catch (SecurityException e){
 			System.err.println("GET_FILE FAIL " + e.toString());
 		} 
-
 		return 0;
 	}
 
 	
 	/**
-	 * @brief Command interpreter for the client. It calls the protocol functions.
+	 * Command interpreter for the client. It calls the protocol functions.
 	 */
 	static void shell() 
 	{
