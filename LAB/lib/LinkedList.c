@@ -1,16 +1,4 @@
 #include "LinkedList.h"
-#include <stdio.h>
-
-typedef struct node {
-    UserServer data;
-    Node * next;
-} Node;
-
-typedef struct list{
-    Node * head;
-    int size;
-} List;
-
 
 List * create_list() {
     List * list = malloc(sizeof(List));
@@ -24,17 +12,17 @@ List * create_list() {
 int list_get_size(List * list) {
   return list->size;
 }
-Node * create_node(UserServer * data){
+Node * create_node(UserServerData * data){
   Node * newNode = malloc(sizeof(Node));
   if (!newNode) {
     return NULL;
   }
-  memcpy((UserServer *)&newNode->data,(UserServer *)data,sizeof(UserServer));
+  memcpy((UserServerData *)&newNode->data,(UserServerData *)data,sizeof(UserServerData));
   newNode->next = NULL;
   return newNode;
 }
 
-void add_element(UserServer * data, List * list){
+void add_element(UserServerData * data, List * list){
   Node * current = NULL;
   if(list->head == NULL){
     list->head = create_node(data);
@@ -67,9 +55,9 @@ void delete_element(char * data, List * list){
 }  
 
 
-UserServer * get_elements(List * list){
+UserServerData * get_elements(List * list){
   Node * current = list->head;
-  UserServer * users = malloc(sizeof(UserServer)*list->size);
+  UserServerData * users = malloc(sizeof(UserServerData)*list->size);
   int ii = 0;
   while(current!=NULL){
       users[ii] = current->data;
@@ -89,11 +77,10 @@ int find_element_byname (List * list,char * data){
     return 0;   
     
 }
-UserServer * get_element_byname (List * list,char * name){
+UserServerData * get_element_byname (List * list,char * name){
     Node * current = list->head;     
     while(current!=NULL){
         if(strcmp(current->data.name,name)==0){
-            puts("Tre");
             return &current->data;
         }
         current = current->next;
@@ -125,4 +112,18 @@ void destroy_list(List * list){
     current = next;
   }
   free(list);
+}
+
+
+void print_list(List * list){
+
+  Node * current = list->head;
+  while(current != NULL){
+    printf("Node -----\n");
+    printf("name ----- %s\n",current->data.name);
+    printf("port ----- %s\n",current->data.port);
+    printf("ip ----- %s\n",current->data.ip_address);
+    current = current->next;
+  }
+
 }

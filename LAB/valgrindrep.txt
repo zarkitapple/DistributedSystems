@@ -1,0 +1,26 @@
+==18186== Memcheck, a memory error detector
+==18186== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==18186== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==18186== Command: ./bin/serverRPC/storage
+==18186== Parent PID: 18169
+==18186== 
+==18186== 
+==18186== Process terminating with default action of signal 1 (SIGHUP)
+==18186==    at 0x4996BF7: poll (poll.c:29)
+==18186==    by 0x49DC2E6: svc_run (svc_run.c:87)
+==18186==    by 0x10C7BE: main (storage_svc.c:225)
+==18186== 
+==18186== HEAP SUMMARY:
+==18186==     in use at exit: 416 bytes in 6 blocks
+==18186==   total heap usage: 35 allocs, 29 frees, 29,660 bytes allocated
+==18186== 
+==18186== LEAK SUMMARY:
+==18186==    definitely lost: 0 bytes in 0 blocks
+==18186==    indirectly lost: 0 bytes in 0 blocks
+==18186==      possibly lost: 0 bytes in 0 blocks
+==18186==    still reachable: 416 bytes in 6 blocks
+==18186==         suppressed: 0 bytes in 0 blocks
+==18186== Rerun with --leak-check=full to see details of leaked memory
+==18186== 
+==18186== For lists of detected and suppressed errors, rerun with: -s
+==18186== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

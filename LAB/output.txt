@@ -1,0 +1,22 @@
+Node -----
+name ----- a
+port ----- 38503
+ip ----- 127.0.0.1
+list users 
+
+mallocd
+
+Got list size
+
+Got list
+
+a---127.0.0.1---38503
+first
+len :1
+name :a
+auqi muero
+name :afirst
+len :1
+name :a
+auqi muero
+name :a

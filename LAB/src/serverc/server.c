@@ -1,11 +1,6 @@
-#include <unistd.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+
 #include <getopt.h>
 #include <netinet/in.h>
-#include "../../lib/lines.h"
-#include "../../lib/LinkedList.h"
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -15,595 +10,102 @@
 #include <dirent.h>
 #include <fcntl.h>
 #define MAX_REQUESTS 10
-#define USERS_DIRECTORY "./Users"
+#define SELF_REPLY 10
+
+#ifdef RPC
+#include "PeerToPeerRPC.h"
+#else
+#include "PeerToPeer.h"				
+#endif
+
 #define REGISTER "REGISTER"
 #define UNREGISTER "UNREGISTER"
 #define CONNECT "CONNECT"
 #define DISCONNECT "DISCONNECT"
 #define PUBLISH "PUBLISH"
 #define DELETE "DELETE"
-#define LIST_USERS "LIST_USERS"
-#define LIST_CONTENT "LIST_CONTENT"
+#define LIST_USERS_LIST "LIST_USERS"
+#define LIST_CONTENT_LIST "LIST_CONTENT"
 
-pthread_mutex_t mutex_msg;
+
+pthread_mutex_t server_mutex;
 int msg_not_copied = 1;
 pthread_cond_t cond_msg;
 
-List * connected_users;
 
-int remove_directory(const char *path)
-{
-   DIR *d = opendir(path);
-   size_t path_len = strlen(path);
-   int r = -1;
-
-   if (d)
-   {
-      struct dirent *p;
-      r = 0;
-      while (!r && (p=readdir(d)))
-      {
-          int r2 = -1;
-          char *buf;
-          size_t len;
-
-          /* Skip the names "." and ".." as we don't want to recurse on them. */
-          if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, ".."))
-          {
-             continue;
-          }
-
-          len = path_len + strlen(p->d_name) + 2; 
-          buf = malloc(len);
-
-          if (buf)
-          {
-             struct stat statbuf;
-
-             snprintf(buf, len, "%s/%s", path, p->d_name);
-
-             if (!stat(buf, &statbuf))
-             {
-                if (S_ISDIR(statbuf.st_mode))
-                {
-                   r2 = remove_directory(buf);
-                }
-                else
-                {
-                   r2 = unlink(buf);
-                }
-             }
-             free(buf);
-          }
-
-          r = r2;
-      }
-      closedir(d);
-   }
-   if (!r)
-   {
-      r = rmdir(path);
-   }
-   return r;
-}
-
-char * get_socket_address(int socket){
-	/* Socket structure to store the socket address */
-		struct sockaddr_in client_addr;
-		memset((char *)&client_addr,0,sizeof(client_addr));
-		socklen_t size = sizeof(client_addr);
-		if((getsockname(socket,(struct sockaddr *)&client_addr,&size ))==-1){
-			perror("Cannot get socket address");
-			return NULL;
-		}
-		//char * client_address = (char *)malloc(IP_SIZE);
-		char * client_address = inet_ntoa(client_addr.sin_addr);
-		return client_address;
-}
-
-int file_exists (char * file_name, char * directory_path){
-	DIR * directory;
-	struct dirent * d_entry;
-
-	if((directory= opendir(directory_path))==NULL){
-		perror("Error when opening users directory");
-		closedir(directory);
-		return -1;
-	}
-	while ((d_entry = readdir(directory)))
-	{
-		if(strcmp(d_entry->d_name,file_name)==0){
-			/* file exists */
-			closedir(directory);
-			return 1;
-		}
-	}
-	/* not exits */
-	closedir(directory);
-	return 0;
-}
-
-
-int isusr_registered(char * user_name){
-	DIR * directory;
-	struct dirent * d_entry;
-	char * dir_path = USERS_DIRECTORY;
-
-	if((directory= opendir(dir_path))==NULL){
-		perror("Error when opening users directory");
-		closedir(directory);
-		return -1;
-	}
-	while ((d_entry = readdir(directory)))
-	{
-		if(strcmp(d_entry->d_name,user_name)==0){
-			/* USER IS ALREADY REGISTERED */
-			closedir(directory);
-			return 1;
-		}
-	}
-	/* not registered */
-	closedir(directory);
-	return 0;
-}
-
-int register_user (int socket) {
-	char user_name[MAX_SIZE];
-	int user_name_length;
-	if((user_name_length=readLine(socket,user_name,MAX_SIZE))==-1){
-		   perror("Error when recieving data");
-		   return 2;
-	}
-	int user_registered = isusr_registered(user_name);
-
-	size_t directory_size = user_name_length + 2 + strlen(USERS_DIRECTORY) + 1;
-	char * dir_path = (char *)malloc(directory_size * sizeof(char));
-
-	switch (user_registered)
-	{
-	case 0:
-		sprintf(dir_path,"%s/%s",USERS_DIRECTORY,user_name);
-
-		if(mkdir(dir_path,0777)==-1){
-			perror("Cannot create user directory");
-			free(dir_path);
-			return 2;
-		}
-		free(dir_path);
-		return 0;
-	
-	case 1:
-		free(dir_path);
-		return 1;
-	default:
-		free(dir_path);
-		return 2;
-	}
-}
- 
-int unregister_user(int socket){
-	char user_name[MAX_SIZE];
-    int user_name_length;
-	if((user_name_length=readLine(socket,user_name,MAX_SIZE))==-1){
-		   perror("Error when recieving data");
-		   return 2;
-	}
-	int user_registered = isusr_registered(user_name);
-
-	size_t directory_size = user_name_length + 2 + strlen(USERS_DIRECTORY) + 1;
-	char * dir_path = (char	*)malloc(directory_size * sizeof(char));
-
-	switch (user_registered)
-	{
-	case 1:
-		sprintf(dir_path,"%s/%s",USERS_DIRECTORY,user_name);
-		/* Remove directory entry */
-		if((remove_directory(dir_path))==-1) {
-			perror("Error when deleting users data");
-			free(dir_path);
-			return 2;
-		}
-		/* remove from connected */
-		delete_element(user_name,connected_users);
-		free(dir_path);
-		return 0;
-	case 0:
-		free(dir_path);
-		return 1;
-	default:
-		free(dir_path);
-		return 2;
-	}
-} 
-int connect_user(int socket){
-	char user_name[MAX_SIZE];
-    int user_name_length;
-	/* receive user name */
-	if((user_name_length=readLine(socket,user_name,MAX_SIZE))==-1){
-		   perror("Error when recieving data");
-		   return 3;
-	}
-	/* receive user port */
-	char user_port [PORT_SIZE];
-	int user_port_length;
-	
-	if((user_port_length=readLine(socket,user_port,PORT_SIZE))==-1){
-		   perror("Error when recieving data");
-		   return 3;
-	}
-
-	int user_registered = isusr_registered(user_name);
-	int user_connected;
-	switch (user_registered)
-	{
-	case 1:
-		user_connected = find_element_byname(connected_users,user_name);
-		if(user_connected){
-			return 2;
-		}
-		char * client_address;
-
-		if ((client_address=get_socket_address(socket))==NULL){
-			return 3;
-		}
-
-		UserServer tmp;
-		strcpy(tmp.name,user_name);
-		strcpy(tmp.port,user_port);
-		strcpy(tmp.ip_address,client_address);
-
-		add_element(&tmp,connected_users);
-		return 0;
-	case 0:
-		return 1;
-	default:
-		return 3;
-	}
-}
-
-int disconnect_user(int socket){
-	char user_name[MAX_SIZE];
-    int user_name_lenth;
-	if((user_name_lenth=readLine(socket,user_name,MAX_SIZE))==-1){
-		   perror("Error when recieving data");
-		   return 3;
-	}
-	int user_registered = isusr_registered(user_name);
-	int user_connected;
-	switch (user_registered)
-	{
-	case 1:
-		user_connected = find_element_byname(connected_users,user_name);
-		if(user_connected){
-			delete_element(user_name,connected_users);
-			return 0;
-		}
-		return 2;
-	case 0:
-		return 1;
-	default:
-		return 3;
-	}
-}
-
-int publish_file(int socket){ 
-	char user_name[MAX_SIZE];
-    int user_name_length;
-	
-	if((user_name_length=readLine(socket,user_name,MAX_SIZE))==-1){
-		perror("Error when recieving data");
-		return 4;
-	}
-	char file_name[MAX_SIZE];
-    int file_name_length;
-	
-	if((file_name_length=readLine(socket,file_name,MAX_SIZE))==-1){
-		perror("Error when recieving data");
-		return 4;
-	}
-	char file_description[MAX_SIZE];
-	int file_description_length;
-	if((file_description_length=readLine(socket,file_description,MAX_SIZE))==-1){
-		perror("Error when recieving data");
-		return 4;
-	}
-
-
-	int user_registered = isusr_registered(user_name);
-	int user_connected;
-
-
-	switch (user_registered)
-	{
-	case 1:
-		user_connected = find_element_byname(connected_users,user_name);
-		if(user_connected){
-			/*./Userddirectory/UserName/*/
-			size_t dir_path_size = strlen(USERS_DIRECTORY) +1 + user_name_length + 2;
-			char * dir_path = (char *)malloc(dir_path_size * sizeof(char));
-			sprintf(dir_path,"%s/%s/",USERS_DIRECTORY,user_name);
-
-			int file=file_exists(file_name,dir_path);
-			switch(file) {
-				case 0:
-					/*./Userddirectory/UserName/*/
-					strncat(dir_path,file_name,file_name_length+1);
-					if((file=open(dir_path, O_CREAT | O_RDWR,0664))==-1){
-						perror("Error when creating file");
-						free(dir_path);
-						return 4;
-					}
-					if((write(file,file_description,file_description_length))==-1){
-						perror("Error when writing description to file");
-						close(file);
-						free(dir_path);
-						return 4;
-					}
-					close(file);
-					free(dir_path);
-					return 0;
-				case 1:
-					free(dir_path);
-					return 3;
-				default:
-					free(dir_path);
-					return 4;
-			}
-		}
-		return 2;
-	
-	default:
-		/* User not registered */ 
-		return 1;
-	}
-}
-
-int delete_file(int socket){
-	char user_name[MAX_SIZE];
-    int user_name_length;
-	if((user_name_length=readLine(socket,user_name,MAX_SIZE))==-1){
-		   perror("Error when recieving data");
-		   return 4;
-	}
-	char file_name[MAX_SIZE];
-    int file_name_length;
-	if((file_name_length=readLine(socket,file_name,MAX_SIZE))==-1){
-		   perror("Error when recieving data");
-		   return 4;
-	}
-	int user_registered = isusr_registered(user_name);
-	int user_connected;
-	/* Check that we are connected */
-	switch (user_registered){
-		case 1:
-			user_connected = find_element_byname(connected_users,user_name);
-			if(user_connected){
-				size_t dir_path_size = strlen(USERS_DIRECTORY) +1 + user_name_length + 2;
-				char * dir_path = (char *)malloc(dir_path_size * sizeof(char));
-				sprintf(dir_path,"%s/%s/",USERS_DIRECTORY,user_name);
-
-				int file=file_exists(file_name,dir_path);
-				switch (file) {
-				case 1:
-					/* File exists */
-					strncat(dir_path,file_name,file_name_length+1);
-					if((remove(dir_path))==-1){
-						perror("Error when removing file");
-						free(dir_path);
-						return 4;
-					}
-					free(dir_path);
-					return 0;
-				case 0:
-					free(dir_path);
-					return 3;
-				default:
-					free(dir_path);
-					return 4;
-				}
-			}
-			return 2;
-		default:
-			return 1;
-	}
-}
-int isusr_connected(int socket,char * user_name){
-	char * client_address;
-	if ((client_address=get_socket_address(socket))==NULL){
-			return 0;
-	}
-	char * user_connected = get_name_byaddress(connected_users,client_address);
-	if(user_connected!=NULL){
-		strcpy(user_name,user_connected);
-		free(user_connected);
-		return 1;
-	}
-	free(user_connected);
-	return 0;
-}
-void list_users (int socket){
-	char * user_name = (char *) malloc(MAX_SIZE * sizeof(char));
-	int user_connected = isusr_connected(socket,user_name);
-	UserServer * users = NULL;
-	int output;
-
-	if(user_connected){
-		int user_registered = isusr_registered(user_name);
-		if(user_registered){
-			users = get_elements(connected_users);
-			if(users == NULL){
-				output = 3;
-			}
-			else{
-				output = 0;
-			}
-		}
-		else {
-			output = 1;
-		}
-	}
-	else {
-		output = 2;
-	}
-	int	response = htonl(output);
-	if(send(socket,(int *)&response,sizeof(int),0)==-1){
-		perror("Error when sending data");
-	}
-	else if (output == 0){
-
-		int number_users = list_get_size(connected_users);
-		response = htonl(number_users);
-
-		if(send(socket,(int *)&response,sizeof(int),0)==-1){
-			perror("Error when sending data");
-		}
-		else {
-			for (int ii = 0; ii < number_users; ii++){
-			if(writeLine(socket,users[ii].name,strlen(users[ii].name)+1)==-1){
-					perror("Error when sending data");
-			}
-			if(writeLine(socket,users[ii].ip_address,strlen(users[ii].ip_address)+1)==-1){
-					perror("Error when sending data");
-			}
-			if(writeLine(socket,users[ii].port,strlen(users[ii].port)+1)==-1){
-					perror("Error when sending data");
-			}
-			}
-		}
-	}
-	free(user_name);
-	free(users);	
-	close(socket);
-
-	pthread_exit(0);
-}
-
-void list_content (int socket){
-	char user_name[MAX_SIZE];
-    int user_name_length;
-	/* receive user name */
-	if((user_name_length=readLine(socket,user_name,MAX_SIZE))==-1){
-		perror("Error when recieving data");
-		//return 4;
-	}
-	char * userop_name = (char *) malloc(MAX_SIZE * sizeof(char));
-	int user_connected = isusr_connected(socket,userop_name);
-
-	DIR * directory;
-	struct dirent * d_entry;
-	size_t dir_path_size = user_name_length + 2 + strlen(USERS_DIRECTORY) + 1;
-	char dir_path [dir_path_size];
-	sprintf(dir_path,"%s/%s/",USERS_DIRECTORY,user_name);
-
-	int number_files = 0;
-	int output;
-
-	if(user_connected){
-		int user_registered = isusr_registered(userop_name);
-		if(user_registered){
-			if((directory= opendir(dir_path))==NULL){
-				perror("Error when opening users directory");
-				closedir(directory);
-				output = 4;
-			}
-			else {
-				int remote_registered = isusr_registered(user_name);
-				if(remote_registered){
-					while ((d_entry = readdir(directory))){
-						if(!strcmp(d_entry->d_name, ".") || !strcmp(d_entry->d_name, "..")) {
-							continue;
-          				}
-						number_files++;		
-					}
-					rewinddir(directory);
-					output = 0;
-				}
-				else {
-					output = 3;
-				}	
-			}
-		}
-		else {
-			output = 1;
-		}
-	}
-	else {
-		output = 2;
-	}
-
-	int	response = htonl(output);
-	if(send(socket,(int *)&response,sizeof(int),0)==-1){
-		perror("Error when sending data");
-	}
-	else if (output == 0){
-
-		response = htonl(number_files);
-
-		if(send(socket,(int *)&response,sizeof(int),0)==-1){
-			perror("Error when sending data");
-		}
-		else {
-			while ((d_entry = readdir(directory))){
-				if(!strcmp(d_entry->d_name, ".") || !strcmp(d_entry->d_name, "..")) {
-					continue;
-          		}
-				size_t data_length = strlen(d_entry->d_name)+1;
-				char user_file_name [data_length];
-				sprintf(user_file_name,"%s",d_entry->d_name);
-
-				if(writeLine(socket,user_file_name,data_length)==-1){
-					perror("Error when sending data");
-				}
-			}
-		}
-	}
-	free(userop_name);
-	closedir(directory);
-	close(socket);
-
-	pthread_exit(0);
-}
 
 
 int command_selector (int socket,char * buffer){
 	int output;
 	if(strcmp(buffer,REGISTER)==0) {
+		#ifdef RPC
+		output = register_user_rpc(socket);
+		#else
 		output = register_user(socket);
+		#endif
 	}
 	else if(strcmp(buffer,UNREGISTER)==0) {
+		#ifdef RPC
+		output = unregister_user_rpc(socket);
+		#else
 		output = unregister_user(socket);
+		#endif
 	}
 	else if(strcmp(buffer,CONNECT)==0){
+		#ifdef RPC
+		output = connect_user_rpc(socket);
+		#else
 		output = connect_user(socket);
+		#endif
 	}
 	else if (strcmp(buffer,DISCONNECT)==0){
+		#ifdef RPC
+		output = disconnect_user_rpc(socket);
+		#else
 		output = disconnect_user(socket);
+		#endif
 	}
 	else if (strcmp(buffer,PUBLISH)==0) {
+		#ifdef RPC
+		output = publish_file_rpc(socket);
+		#else
 		output = publish_file(socket);
+		#endif
 	}
 	else if (strcmp(buffer,DELETE)==0){
+		#ifdef RPC
+		output = delete_file_rpc(socket);
+		#else
 		output = delete_file(socket);
+		#endif
 	}
-	else if(strcmp(buffer,LIST_USERS)==0){
+	else if(strcmp(buffer,LIST_USERS_LIST)==0){
+		#ifdef RPC
+		list_users_rpc(socket);
+		#else
 		list_users(socket);
+		#endif
+		output = SELF_REPLY;
 	}
-	else if (strcmp(buffer,LIST_CONTENT)==0){
+	else if (strcmp(buffer,LIST_CONTENT_LIST)==0){
+		#ifdef RPC
+		list_content_rpc(socket);
+		#else
 		list_content(socket);
+		#endif
+		output = SELF_REPLY;
 	}
 	return output;
 }
 
-
-
 void process_request(int * sd){
     int socket;
 
-    pthread_mutex_lock(&mutex_msg);
+    pthread_mutex_lock(&server_mutex);
     socket = *sd;
     msg_not_copied = 0;
     pthread_cond_signal(&cond_msg);
-    pthread_mutex_unlock(&mutex_msg);
+    pthread_mutex_unlock(&server_mutex);
 
     char message[MAX_SIZE];
 	int output;
@@ -612,10 +114,13 @@ void process_request(int * sd){
 	}
 	else {
 		output = command_selector(socket,message);
-		int response = htonl(output);
-		if(send(socket,(int *)&response,sizeof(int),0)==-1){
-			perror("Error when sending data");
+		if (output != SELF_REPLY){
+			int response = htonl(output);
+			if(send(socket,(int *)&response,sizeof(int),0)==-1){
+				perror("Error when sending data");
+			}
 		}
+		
 	}
     close(socket);
     pthread_exit(0);
@@ -652,10 +157,13 @@ int main(int argc, char ** argv) {
 
 	printf("Init server %s:%s\n",inet_ntoa(in) ,port);
 
-	if(!(connected_users = create_list())){
-		perror("Error when creating connected users queue");
-		return -1;
+	#ifdef RPC
+	init_p2p_service_rpc();
+	#else
+	if(init_p2p_service()!=0){
+		 perror("Error when creating data structures");
 	}
+	#endif
 
 	int accept_socket, data_socket;
 	struct sockaddr_in server_addr, client_addr;
@@ -678,7 +186,7 @@ int main(int argc, char ** argv) {
 
 	pthread_attr_t t_attr;
     pthread_t thid;
-    pthread_mutex_init(&mutex_msg,NULL);
+    pthread_mutex_init(&server_mutex,NULL);
     pthread_cond_init(&cond_msg,NULL);
     pthread_attr_init(&t_attr);
     pthread_attr_setdetachstate(&t_attr,PTHREAD_CREATE_DETACHED);
@@ -690,13 +198,13 @@ int main(int argc, char ** argv) {
              perror("Error when acepting");
         }
 		pthread_create(&thid,&t_attr,(void *)process_request,&data_socket);
-        pthread_mutex_lock(&mutex_msg);
+        pthread_mutex_lock(&server_mutex);
         while (msg_not_copied)
         {
-            pthread_cond_wait(&cond_msg,&mutex_msg);
+            pthread_cond_wait(&cond_msg,&server_mutex);
         }
         msg_not_copied = 1;
-        pthread_mutex_unlock(&mutex_msg);
+        pthread_mutex_unlock(&server_mutex);
 	}
 	
 	
